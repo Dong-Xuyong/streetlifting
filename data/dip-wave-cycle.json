@@ -1,0 +1,28 @@
+{
+  "id": "dip-wave",
+  "name": "Dip micro/macro wave",
+  "exerciseId": "dip",
+  "phases": [
+    {
+      "reps": 10,
+      "intensiveSets": 3,
+      "volumeSets": 6,
+      "volumeReps": 6,
+      "volumeOffsetKg": 0
+    },
+    {
+      "reps": 6,
+      "intensiveSets": 3,
+      "volumeSets": 6,
+      "volumeReps": 4,
+      "volumeOffsetKg": 0
+    },
+    {
+      "reps": 3,
+      "intensiveSets": 3,
+      "volumeSets": 6,
+      "volumeReps": 3,
+      "volumeOffsetKg": -5
+    }
+  ]
+}

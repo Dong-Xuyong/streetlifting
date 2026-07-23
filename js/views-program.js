@@ -162,8 +162,13 @@
   function programKindLabel(p) {
     if (p.kind === "percent_cycle") return "4-week % cycle";
     if (p.kind === "pullup_wave") return "Pull-up wave";
+    if (p.kind === "dip_wave") return "Dip wave";
     var n = (p.days && p.days.length) || 0;
     return n + " day" + (n === 1 ? "" : "s");
+  }
+
+  function isWaveProgram(p) {
+    return !!(SL.store.isRepWave && SL.store.isRepWave(p));
   }
 
   function daySummaryLine(day, catalog) {
@@ -263,8 +268,8 @@
     if (prog && prog.kind === "percent_cycle") {
       state.mode = "squat-schedule";
       state.programId = id;
-    } else if (prog && prog.kind === "pullup_wave") {
-      state.mode = "pullup-status";
+    } else if (prog && isWaveProgram(prog)) {
+      state.mode = "wave-status";
       state.programId = id;
     } else {
       state.mode = "edit";
@@ -382,9 +387,11 @@
       '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
     html += '<hr class="weld" />';
     html +=
-      '<p class="muted" style="margin:0 0 12px">Pull-up wave: start weight for the first micro (3×10). Advance +2.5 kg or drop reps (10→6→3).</p>';
+      '<p class="muted" style="margin:0 0 12px">Wave programs: start weight for the first micro (3×10). Advance +2.5 kg or drop reps (10→6→3). Intensive 3 sets / Volume 6 sets.</p>';
     html +=
-      '<button type="button" class="btn block" id="prog-pullup-wave">Pull-up wave (start weight)</button>';
+      '<button type="button" class="btn block" id="prog-pullup-wave" style="margin-bottom:10px">Pull-up wave (start weight)</button>';
+    html +=
+      '<button type="button" class="btn block" id="prog-dip-wave">Dip wave (start weight)</button>';
     html += "</div>";
 
     root.innerHTML = html;
@@ -439,7 +446,15 @@
     });
 
     root.querySelector("#prog-pullup-wave").addEventListener("click", function () {
-      state.mode = "pullup-wave";
+      state.mode = "wave-create";
+      state.waveKind = "pullup_wave";
+      state.programId = null;
+      refresh();
+    });
+
+    root.querySelector("#prog-dip-wave").addEventListener("click", function () {
+      state.mode = "wave-create";
+      state.waveKind = "dip_wave";
       state.programId = null;
       refresh();
     });
@@ -447,30 +462,51 @@
     bindListActions(root);
   }
 
-  function renderPullupWaveForm(root) {
+  function waveCreateConfig(kind) {
+    if (kind === "dip_wave") {
+      return {
+        kind: "dip_wave",
+        exerciseId: "dip",
+        title: "Dip wave",
+        schemeId: "dip-wave",
+        namePrefix: "Dip wave",
+      };
+    }
+    return {
+      kind: "pullup_wave",
+      exerciseId: "pullup",
+      title: "Pull-up wave",
+      schemeId: "pullup-wave",
+      namePrefix: "Pull-up wave",
+    };
+  }
+
+  function renderWaveCreateForm(root) {
+    var cfg = waveCreateConfig(state.waveKind || "pullup_wave");
     var unit = settingsUnit();
     var html = '<div class="card">';
     html +=
-      '<button type="button" class="btn sm secondary" id="pullup-cancel" style="margin-bottom:12px">Back to programs</button>';
-    html += "<h2>Pull-up wave</h2>";
+      '<button type="button" class="btn sm secondary" id="wave-cancel" style="margin-bottom:12px">Back to programs</button>';
+    html += "<h2>" + esc(cfg.title) + "</h2>";
     html +=
       '<p class="muted" style="margin-bottom:14px">One input: start weight for the first micro (phase 3×10). Intensive 3 sets / Volume 6 sets follow the wave. You choose when to +2.5 kg or drop reps.</p>';
     html +=
       '<label class="field"><span class="lbl">Start weight — first micro (' +
       esc(unit) +
-      ')</span><input type="number" id="pullup-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" autofocus /></label>';
+      ')</span><input type="number" id="wave-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" autofocus /></label>';
     html += '<div class="stack" style="margin-top:8px">';
-    html += '<button type="button" class="btn block" id="pullup-create">Create program</button>';
+    html += '<button type="button" class="btn block" id="wave-create">Create program</button>';
     html += "</div></div>";
     root.innerHTML = html;
 
-    root.querySelector("#pullup-cancel").addEventListener("click", function () {
+    root.querySelector("#wave-cancel").addEventListener("click", function () {
       state.mode = "list";
+      state.waveKind = null;
       refresh();
     });
 
-    root.querySelector("#pullup-create").addEventListener("click", function () {
-      var input = root.querySelector("#pullup-start");
+    root.querySelector("#wave-create").addEventListener("click", function () {
+      var input = root.querySelector("#wave-start");
       var raw = input && input.value;
       var n = Number(raw);
       if (!isFinite(n) || n < 0) {
@@ -480,35 +516,38 @@
       var startKg = unit === "lb" ? n / KG_TO_LB : n;
       startKg = Math.round(startKg * 100) / 100;
       SL.store
-        .loadPullupWaveScheme()
+        .loadWaveScheme(cfg.kind)
         .then(function (scheme) {
           var program = {
             id: uid(),
-            name: "Pull-up wave — " + kgToDisplay(startKg, unit) + " " + unit,
+            name: cfg.namePrefix + " — " + kgToDisplay(startKg, unit) + " " + unit,
             active: false,
-            kind: "pullup_wave",
-            exerciseId: "pullup",
+            kind: cfg.kind,
+            exerciseId: cfg.exerciseId,
             startLoadKg: startKg,
             intensiveLoadKg: startKg,
             phaseIndex: 0,
             microStepKg: 2.5,
             nextWaveDay: "intensive",
-            schemeId: (scheme && scheme.id) || "pullup-wave",
+            schemeId: (scheme && scheme.id) || cfg.schemeId,
             days: [],
           };
           SL.store.upsertProgram(program);
           SL.store.setActiveProgram(program.id);
-          state.mode = "pullup-status";
+          state.mode = "wave-status";
           state.programId = program.id;
-          state.pullupScheme = scheme;
+          state.waveScheme = scheme;
+          state.waveKind = cfg.kind;
           refresh();
         })
         .catch(function (err) {
           root.innerHTML =
-            '<div class="card"><p class="muted">Could not load pull-up wave: ' +
+            '<div class="card"><p class="muted">Could not load ' +
+            esc(cfg.title.toLowerCase()) +
+            ": " +
             esc((err && err.message) || "error") +
-            '</p><button type="button" class="btn block" id="pullup-back">Back to programs</button></div>';
-          root.querySelector("#pullup-back").addEventListener("click", function () {
+            '</p><button type="button" class="btn block" id="wave-back">Back to programs</button></div>';
+          root.querySelector("#wave-back").addEventListener("click", function () {
             state.mode = "list";
             refresh();
           });
@@ -516,16 +555,19 @@
     });
   }
 
-  function renderPullupWaveStatus(root) {
+  function renderWaveStatus(root) {
     var program = getEditingProgram();
-    if (!program || program.kind !== "pullup_wave") {
+    if (!program || !isWaveProgram(program)) {
       state.mode = "list";
       renderList(root);
       return;
     }
     var unit = settingsUnit();
+    var lift =
+      (SL.store.waveLiftLabel && SL.store.waveLiftLabel(program)) || "Pull-up";
 
     function paint(scheme) {
+      state.waveScheme = scheme;
       state.pullupScheme = scheme;
       var intensive = SL.store.currentPullupWaveSession(program, scheme, "intensive");
       var volume = SL.store.currentPullupWaveSession(program, scheme, "volume");
@@ -538,7 +580,7 @@
 
       var html = '<div class="card">';
       html +=
-        '<button type="button" class="btn sm secondary" id="pullup-back-list" style="margin-bottom:12px">Back to programs</button>';
+        '<button type="button" class="btn sm secondary" id="wave-back-list" style="margin-bottom:12px">Back to programs</button>';
       html += '<div class="spread"><h2 style="margin:0">' + esc(program.name) + "</h2>";
       if (program.active) html += '<span class="badge green">Active</span>';
       html += "</div>";
@@ -550,7 +592,9 @@
           '<p class="muted small" style="margin:8px 0 0">Active — drives Home and Start workout.</p>';
       }
       html +=
-        '<p class="muted" style="margin:12px 0 14px">Macro: 10 → 6 → 3 · Micro: +2.5 kg until you drop reps</p>';
+        '<p class="muted" style="margin:12px 0 14px">' +
+        esc(lift) +
+        " · Macro: 10 → 6 → 3 · Micro: +2.5 kg until you drop reps</p>";
       html += '<div class="stat-grid" style="margin-bottom:14px">';
       html +=
         '<div class="stat"><div class="val">' +
@@ -608,75 +652,75 @@
       html +=
         '<button type="button" class="btn grow' +
         (prefer === "intensive" ? "" : " secondary") +
-        '" id="pullup-prefer-intensive">Intensive</button>';
+        '" id="wave-prefer-intensive">Intensive</button>';
       html +=
         '<button type="button" class="btn grow' +
         (prefer === "volume" ? "" : " secondary") +
-        '" id="pullup-prefer-volume">Volume</button>';
+        '" id="wave-prefer-volume">Volume</button>';
       html += "</div>";
 
       html += '<hr class="weld" />';
       html += '<div class="stack">';
       html +=
-        '<button type="button" class="btn block" id="pullup-micro">Next micro (+2.5 kg)</button>';
+        '<button type="button" class="btn block" id="wave-micro">Next micro (+2.5 kg)</button>';
       html +=
-        '<button type="button" class="btn block secondary" id="pullup-micro-back">Previous micro (−2.5 kg)</button>';
+        '<button type="button" class="btn block secondary" id="wave-micro-back">Previous micro (−2.5 kg)</button>';
       if (!atPeak) {
         html +=
-          '<button type="button" class="btn block secondary" id="pullup-macro">End micro / next macro (drop reps)</button>';
+          '<button type="button" class="btn block secondary" id="wave-macro">End micro / next macro (drop reps)</button>';
       } else {
         html +=
           '<p class="muted small">At final phase 3×3 — keep micro (+2.5 kg) or start a new cycle.</p>';
       }
       if (idx > 0) {
         html +=
-          '<button type="button" class="btn block secondary" id="pullup-macro-back">Previous macro (raise reps)</button>';
+          '<button type="button" class="btn block secondary" id="wave-macro-back">Previous macro (raise reps)</button>';
       }
       html += "</div>";
       if (!program.active) {
         html +=
-          '<button type="button" class="btn block" id="pullup-activate" style="margin-top:14px">Set active</button>';
+          '<button type="button" class="btn block" id="wave-activate" style="margin-top:14px">Set active</button>';
       }
       html += "</div>";
       root.innerHTML = html;
 
-      root.querySelector("#pullup-back-list").addEventListener("click", function () {
+      root.querySelector("#wave-back-list").addEventListener("click", function () {
         state.mode = "list";
         state.programId = null;
         refresh();
       });
-      var act = root.querySelector("#pullup-activate");
+      var act = root.querySelector("#wave-activate");
       if (act) {
         act.addEventListener("click", function () {
           SL.store.setActiveProgram(program.id);
           refresh();
         });
       }
-      root.querySelector("#pullup-prefer-intensive").addEventListener("click", function () {
+      root.querySelector("#wave-prefer-intensive").addEventListener("click", function () {
         SL.store.setPullupNextWaveDay(program.id, "intensive");
         var updated = getEditingProgram();
         if (updated) program = updated;
         paint(scheme);
       });
-      root.querySelector("#pullup-prefer-volume").addEventListener("click", function () {
+      root.querySelector("#wave-prefer-volume").addEventListener("click", function () {
         SL.store.setPullupNextWaveDay(program.id, "volume");
         var updated = getEditingProgram();
         if (updated) program = updated;
         paint(scheme);
       });
-      root.querySelector("#pullup-micro").addEventListener("click", function () {
+      root.querySelector("#wave-micro").addEventListener("click", function () {
         SL.store.advancePullupMicro(program.id);
         var updated = getEditingProgram();
         if (updated) program = updated;
         paint(scheme);
       });
-      root.querySelector("#pullup-micro-back").addEventListener("click", function () {
+      root.querySelector("#wave-micro-back").addEventListener("click", function () {
         SL.store.retreatPullupMicro(program.id);
         var updated = getEditingProgram();
         if (updated) program = updated;
         paint(scheme);
       });
-      var macroBtn = root.querySelector("#pullup-macro");
+      var macroBtn = root.querySelector("#wave-macro");
       if (macroBtn) {
         macroBtn.addEventListener("click", function () {
           if (
@@ -692,7 +736,7 @@
           paint(scheme);
         });
       }
-      var macroBack = root.querySelector("#pullup-macro-back");
+      var macroBack = root.querySelector("#wave-macro-back");
       if (macroBack) {
         macroBack.addEventListener("click", function () {
           SL.store.retreatPullupMacro(program.id);
@@ -703,24 +747,32 @@
       }
     }
 
-    if (state.pullupScheme) {
-      paint(state.pullupScheme);
-    } else {
-      root.innerHTML = '<div class="card"><p class="muted">Loading wave…</p></div>';
-      SL.store
-        .loadPullupWaveScheme()
-        .then(paint)
-        .catch(function (err) {
-          root.innerHTML =
-            '<div class="card"><p class="muted">' +
-            esc((err && err.message) || "Failed to load") +
-            '</p><button type="button" class="btn block" id="pullup-back-list">Back to programs</button></div>';
-          root.querySelector("#pullup-back-list").addEventListener("click", function () {
-            state.mode = "list";
-            refresh();
-          });
-        });
+    var cached = state.waveScheme || state.pullupScheme;
+    if (cached && cached.exerciseId === (program.exerciseId || cached.exerciseId)) {
+      // Prefer matching scheme; fall through to load if wrong lift cached
+      if (
+        (program.kind === "dip_wave" && cached.id === "dip-wave") ||
+        (program.kind === "pullup_wave" && cached.id === "pullup-wave") ||
+        cached.exerciseId === program.exerciseId
+      ) {
+        paint(cached);
+        return;
+      }
     }
+    root.innerHTML = '<div class="card"><p class="muted">Loading wave…</p></div>';
+    SL.store
+      .loadWaveScheme(program)
+      .then(paint)
+      .catch(function (err) {
+        root.innerHTML =
+          '<div class="card"><p class="muted">' +
+          esc((err && err.message) || "Failed to load") +
+          '</p><button type="button" class="btn block" id="wave-back-list">Back to programs</button></div>';
+        root.querySelector("#wave-back-list").addEventListener("click", function () {
+          state.mode = "list";
+          refresh();
+        });
+      });
   }
 
   function renderSquatCycleForm(root) {
@@ -1337,10 +1389,10 @@
       renderSquatCycleForm(root);
     } else if (state.mode === "squat-schedule") {
       renderSquatSchedule(root);
-    } else if (state.mode === "pullup-wave") {
-      renderPullupWaveForm(root);
-    } else if (state.mode === "pullup-status") {
-      renderPullupWaveStatus(root);
+    } else if (state.mode === "wave-create" || state.mode === "pullup-wave") {
+      renderWaveCreateForm(root);
+    } else if (state.mode === "wave-status" || state.mode === "pullup-status") {
+      renderWaveStatus(root);
     } else if (state.mode === "edit") {
       renderEdit(root);
     } else {
@@ -1351,8 +1403,14 @@
   function title() {
     if (state.mode === "squat-cycle") return "Squat 1RM cycle";
     if (state.mode === "squat-schedule") return "Squat schedule";
-    if (state.mode === "pullup-wave") return "Pull-up wave";
-    if (state.mode === "pullup-status") return "Pull-up wave";
+    if (state.mode === "wave-create" || state.mode === "pullup-wave") {
+      return waveCreateConfig(state.waveKind || "pullup_wave").title;
+    }
+    if (state.mode === "wave-status" || state.mode === "pullup-status") {
+      var wp = getEditingProgram();
+      if (wp && wp.kind === "dip_wave") return "Dip wave";
+      return "Pull-up wave";
+    }
     if (state.mode === "edit" && state.dayIndex != null) return "Edit day";
     if (state.mode === "edit") return "Edit program";
     return "Programs";

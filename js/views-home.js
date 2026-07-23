@@ -335,7 +335,12 @@
     );
   }
 
-  function renderPullupWaveHome(program, intensive, volume, selected, unit) {
+  function renderPullupWaveHome(program, intensive, volume, selected, unit, opts) {
+    opts = opts || {};
+    var atPeak = !!opts.atPeak;
+    var stepKg = Number(program && program.microStepKg);
+    if (!isFinite(stepKg) || stepKg <= 0) stepKg = 2.5;
+    var stepLabel = fmtNum(stepKg, unit) != null ? fmtNum(stepKg, unit) : String(stepKg);
     var session =
       selected === "volume" ? volume : intensive || volume;
     if (!session) {
@@ -356,6 +361,8 @@
       );
     }
 
+    var liftName =
+      (SL.store.waveLiftLabel && SL.store.waveLiftLabel(program)) || "Pull-up";
     var pe = (session.exercises && session.exercises[0]) || null;
     var num = pe ? fmtNum(pe.loadKg, unit) : null;
     var rows = [];
@@ -363,17 +370,18 @@
     for (var i = 0; i < exercises.length; i++) {
       var ex = exercises[i];
       rows.push({
-        name: "Pull-up",
+        name: liftName,
         sub: ex.sets + " × " + ex.reps + " @ " + fmtWeight(ex.loadKg, unit),
       });
     }
 
+    var endLabel = atPeak ? "End cycle (+" + stepLabel + " " + unit + ")" : "End micro (drop reps)";
     var dayPick =
       '<hr class="weld" aria-hidden="true" />' +
       '<section class="card" aria-label="Day type">' +
       renderSecondaryHeading("Day type") +
-      '<p class="muted small" style="margin:0 0 10px">Choose Intensive or Volume, then start.</p>' +
-      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:4px" role="group" aria-label="Wave day">' +
+      '<p class="muted small" style="margin:0 0 10px">Choose Intensive or Volume, then start. Advance load or end the micro/cycle when ready.</p>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px" role="group" aria-label="Wave day">' +
       '<button type="button" class="btn' +
       (selected === "intensive" ? "" : " secondary") +
       '" data-action="pick-wave-day" data-wave="intensive" aria-pressed="' +
@@ -384,6 +392,16 @@
       '" data-action="pick-wave-day" data-wave="volume" aria-pressed="' +
       (selected === "volume" ? "true" : "false") +
       '">Volume</button>' +
+      "</div>" +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:4px" role="group" aria-label="Wave progress">' +
+      '<button type="button" class="btn secondary grow" data-action="wave-add-micro">+' +
+      esc(stepLabel) +
+      " " +
+      esc(unit) +
+      "</button>" +
+      '<button type="button" class="btn secondary grow" data-action="wave-end-cycle">' +
+      esc(endLabel) +
+      "</button>" +
       "</div></section>";
 
     return (
@@ -391,13 +409,18 @@
         num: num,
         unit: unit,
         eyebrow: "Next load",
-        lift: "Pull-up",
+        lift: liftName,
         meta: session.name || "Wave session",
         ctaLabel: "Start workout",
         ctaAction: "start-wave",
       }) +
       dayPick +
-      renderDayCard("Session plan", program.name || "Pull-up wave", rows, "View")
+      renderDayCard(
+        "Session plan",
+        program.name || liftName + " wave",
+        rows,
+        "View"
+      )
     );
   }
 
@@ -524,9 +547,13 @@
     var programs = SL.store.listPrograms() || [];
     var program = SL.store.getActiveProgram();
     var names = exerciseNameMap();
-    var waveSelected =
+    var isWave =
       program &&
-      program.kind === "pullup_wave" &&
+      ((SL.store.isRepWave && SL.store.isRepWave(program)) ||
+        program.kind === "pullup_wave" ||
+        program.kind === "dip_wave");
+    var waveSelected =
+      isWave &&
       (program.nextWaveDay === "volume" || program.nextWaveDay === "intensive")
         ? program.nextWaveDay
         : null;
@@ -573,6 +600,54 @@
           var wave = btn.getAttribute("data-wave");
           if (!program || !wave) return;
           SL.store.setPullupNextWaveDay(program.id, wave);
+          paint(root);
+        } else if (action === "wave-add-micro") {
+          if (!isWave) return;
+          var step = Number(program.microStepKg);
+          if (!isFinite(step) || step <= 0) step = 2.5;
+          var stepTxt = fmtNum(step, unit) != null ? fmtNum(step, unit) : String(step);
+          if (
+            !window.confirm(
+              "Add +" + stepTxt + " " + unit + " for the next micro?\n\nResets next day to Intensive."
+            )
+          ) {
+            return;
+          }
+          SL.store.advancePullupMicro(program.id);
+          paint(root);
+        } else if (action === "wave-end-cycle") {
+          if (!isWave) return;
+          var peak =
+            typeof SL.store.pullupWaveAtPeak === "function"
+              ? SL.store.pullupWaveAtPeak(program)
+              : false;
+          if (peak) {
+            var endStep = Number(program.microStepKg);
+            if (!isFinite(endStep) || endStep <= 0) endStep = 2.5;
+            var endTxt =
+              fmtNum(endStep, unit) != null ? fmtNum(endStep, unit) : String(endStep);
+            if (
+              !window.confirm(
+                "End the cycle?\n\nBack to 3×10 and +" +
+                  endTxt +
+                  " " +
+                  unit +
+                  " on intensive load. Next day: Intensive."
+              )
+            ) {
+              return;
+            }
+            SL.store.finishPullupCycle(program.id);
+          } else {
+            if (
+              !window.confirm(
+                "End this micro and drop reps to the next macro phase?\n\nWeight stays the same. Next day: Intensive."
+              )
+            ) {
+              return;
+            }
+            SL.store.advancePullupMacro(program.id);
+          }
           paint(root);
         } else if (action === "select-program") {
           var id = btn.getAttribute("data-id");
@@ -622,7 +697,9 @@
       return;
     }
 
-    if (program && program.kind === "pullup_wave") {
+    if (isWave) {
+      var waveEyebrow =
+        (SL.store.waveLiftLabel && SL.store.waveLiftLabel(program)) || "Wave";
       finish(
         renderLoadHero({
           num: null,
@@ -634,7 +711,7 @@
         })
       );
       SL.store
-        .loadPullupWaveScheme()
+        .loadWaveScheme(program)
         .then(function (scheme) {
           if (!root.isConnected) return;
           var intensive = SL.store.currentPullupWaveSession(
@@ -656,8 +733,16 @@
             waveSelected ||
             (suggested && suggested.waveDay) ||
             "intensive";
+          var atPeak =
+            typeof SL.store.pullupWaveAtPeak === "function"
+              ? SL.store.pullupWaveAtPeak(program, scheme)
+              : false;
+          // Refresh program from store after possible earlier edits
+          program = SL.store.getActiveProgram() || program;
           finish(
-            renderPullupWaveHome(program, intensive, volume, selected, unit)
+            renderPullupWaveHome(program, intensive, volume, selected, unit, {
+              atPeak: atPeak,
+            })
           );
         })
         .catch(function () {
@@ -666,7 +751,7 @@
             renderLoadHero({
               num: null,
               unit: unit,
-              eyebrow: "Pull-up wave",
+              eyebrow: waveEyebrow + " wave",
               lift: "Could not load wave",
               meta: "Check the program or try again",
               ctaLabel: "Open Programs",
@@ -674,7 +759,7 @@
             }) +
               renderEmptyHint(
                 "Wave failed",
-                "Open Programs to fix the pull-up wave, then return here."
+                "Open Programs to fix the wave, then return here."
               )
           );
         });

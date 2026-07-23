@@ -411,14 +411,20 @@
         return draft;
       }
 
-      if (shouldPrefill(opts) && program && program.kind === "pullup_wave") {
+      if (
+        shouldPrefill(opts) &&
+        program &&
+        ((SL.store.isRepWave && SL.store.isRepWave(program)) ||
+          program.kind === "pullup_wave" ||
+          program.kind === "dip_wave")
+      ) {
         SL.pendingStart = false;
         var which =
           opts && (opts.waveDay === "intensive" || opts.waveDay === "volume")
             ? opts.waveDay
             : "next";
         SL.store
-          .loadPullupWaveScheme()
+          .loadWaveScheme(program)
           .then(function (scheme) {
             if (which === "intensive" || which === "volume") {
               SL.store.setPullupNextWaveDay(program.id, which);
@@ -836,10 +842,21 @@
       SL.pendingStart = true;
       draft = null;
       var prog = SL.store.getActiveProgram();
-      if (prog && (prog.kind === "percent_cycle" || prog.kind === "pullup_wave")) {
+      var isWaveProg =
+        prog &&
+        ((SL.store.isRepWave && SL.store.isRepWave(prog)) ||
+          prog.kind === "pullup_wave" ||
+          prog.kind === "dip_wave");
+      if (prog && (prog.kind === "percent_cycle" || isWaveProg)) {
+        var loadLabel =
+          prog.kind === "percent_cycle"
+            ? "squat"
+            : prog.kind === "dip_wave"
+              ? "dip"
+              : "pull-up";
         root.innerHTML =
           '<div class="card"><p class="muted">Loading ' +
-          (prog.kind === "pullup_wave" ? "pull-up" : "squat") +
+          loadLabel +
           " session…</p></div>";
         ensureDraft({ startFromProgram: true }, function () {
           if (root.isConnected) paintLog(root);
@@ -856,7 +873,11 @@
       var activeProg = SL.store.getActiveProgram();
       if (
         !activeProg ||
-        activeProg.kind !== "pullup_wave" ||
+        !(
+          (SL.store.isRepWave && SL.store.isRepWave(activeProg)) ||
+          activeProg.kind === "pullup_wave" ||
+          activeProg.kind === "dip_wave"
+        ) ||
         (wave !== "intensive" && wave !== "volume")
       ) {
         return;
@@ -864,8 +885,86 @@
       SL.store.setPullupNextWaveDay(activeProg.id, wave);
       SL.pendingStart = true;
       draft = null;
-      root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
+      var waveLoadLabel =
+        activeProg.kind === "dip_wave" ? "dip" : "pull-up";
+      root.innerHTML =
+        '<div class="card"><p class="muted">Loading ' +
+        waveLoadLabel +
+        " session…</p></div>";
       ensureDraft({ startFromProgram: true, waveDay: wave }, function () {
+        if (root.isConnected) paintLog(root);
+      });
+      return;
+    }
+
+    if (action === "wave-add-micro" || action === "wave-end-cycle") {
+      var waveProg = SL.store.getActiveProgram();
+      if (
+        !waveProg ||
+        !(
+          (SL.store.isRepWave && SL.store.isRepWave(waveProg)) ||
+          waveProg.kind === "pullup_wave" ||
+          waveProg.kind === "dip_wave"
+        )
+      ) {
+        return;
+      }
+      var unitNow = settings().unit;
+      var stepNow = Number(waveProg.microStepKg);
+      if (!isFinite(stepNow) || stepNow <= 0) stepNow = 2.5;
+      var stepShown = kgToDisplay(stepNow, unitNow);
+      var stepTxt =
+        stepShown != null
+          ? Number.isInteger(stepShown)
+            ? String(stepShown)
+            : String(Math.round(stepShown * 10) / 10)
+          : String(stepNow);
+      if (action === "wave-add-micro") {
+        if (
+          !window.confirm(
+            "Add +" +
+              stepTxt +
+              " " +
+              unitNow +
+              " for the next micro?\n\nResets next day to Intensive and reloads this session."
+          )
+        ) {
+          return;
+        }
+        SL.store.advancePullupMicro(waveProg.id);
+      } else {
+        var peakNow =
+          typeof SL.store.pullupWaveAtPeak === "function"
+            ? SL.store.pullupWaveAtPeak(waveProg)
+            : false;
+        if (peakNow) {
+          if (
+            !window.confirm(
+              "End the cycle?\n\nBack to 3×10 and +" +
+                stepTxt +
+                " " +
+                unitNow +
+                ". Reloads as Intensive."
+            )
+          ) {
+            return;
+          }
+          SL.store.finishPullupCycle(waveProg.id);
+        } else {
+          if (
+            !window.confirm(
+              "End this micro and drop reps to the next macro phase?\n\nWeight stays the same. Reloads as Intensive."
+            )
+          ) {
+            return;
+          }
+          SL.store.advancePullupMacro(waveProg.id);
+        }
+      }
+      SL.pendingStart = true;
+      draft = null;
+      root.innerHTML = '<div class="card"><p class="muted">Updating wave…</p></div>';
+      ensureDraft({ startFromProgram: true, waveDay: "intensive" }, function () {
         if (root.isConnected) paintLog(root);
       });
       return;
@@ -1056,7 +1155,11 @@
     var unit = s.unit;
     var program = SL.store.getActiveProgram();
     var day =
-      program && program.kind !== "percent_cycle" && program.kind !== "pullup_wave"
+      program &&
+      program.kind !== "percent_cycle" &&
+      program.kind !== "pullup_wave" &&
+      program.kind !== "dip_wave" &&
+      !(SL.store.isRepWave && SL.store.isRepWave(program))
         ? nextProgramDay(program)
         : null;
     var linked = !!(draft.programId && (draft.dayId || draft.cycleKey || draft.waveDay));
@@ -1071,7 +1174,29 @@
           '<p class="muted small">Linked to <strong>' +
           esc(draft.dayName || "squat cycle session") +
           "</strong></p>";
-      } else if (program && program.kind === "pullup_wave" && linked) {
+      } else if (
+        program &&
+        linked &&
+        ((SL.store.isRepWave && SL.store.isRepWave(program)) ||
+          program.kind === "pullup_wave" ||
+          program.kind === "dip_wave")
+      ) {
+        var stepKg = Number(program.microStepKg);
+        if (!isFinite(stepKg) || stepKg <= 0) stepKg = 2.5;
+        var stepDisp = kgToDisplay(stepKg, unit);
+        var stepLabel =
+          stepDisp != null
+            ? Number.isInteger(stepDisp)
+              ? String(stepDisp)
+              : String(Math.round(stepDisp * 10) / 10)
+            : String(stepKg);
+        var atPeak =
+          typeof SL.store.pullupWaveAtPeak === "function"
+            ? SL.store.pullupWaveAtPeak(program)
+            : false;
+        var endLabel = atPeak
+          ? "End cycle (+" + stepLabel + " " + unit + ")"
+          : "End micro (drop reps)";
         linkHtml =
           '<p class="muted small">Linked to <strong>' +
           esc(draft.dayName || "pull-up wave session") +
@@ -1083,6 +1208,16 @@
           '<button type="button" class="btn grow' +
           (draft.waveDay === "volume" ? " btn-primary" : " secondary") +
           '" data-action="pick-wave-day" data-wave="volume">Volume</button>' +
+          "</div>" +
+          '<div class="row wrap" style="gap:8px;margin:0 0 8px">' +
+          '<button type="button" class="btn secondary grow" data-action="wave-add-micro">+' +
+          esc(stepLabel) +
+          " " +
+          esc(unit) +
+          "</button>" +
+          '<button type="button" class="btn secondary grow" data-action="wave-end-cycle">' +
+          esc(endLabel) +
+          "</button>" +
           "</div>";
       } else if (program && day) {
         linkHtml =
@@ -1167,13 +1302,18 @@
       });
       return;
     }
-    if (
-      starting &&
+    var progIsWave =
       program &&
-      program.kind === "pullup_wave" &&
-      (!draft || !draft.waveDay)
-    ) {
-      root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
+      ((SL.store.isRepWave && SL.store.isRepWave(program)) ||
+        program.kind === "pullup_wave" ||
+        program.kind === "dip_wave");
+    var waveSessionLabel =
+      program && program.kind === "dip_wave" ? "dip" : "pull-up";
+    if (starting && progIsWave && (!draft || !draft.waveDay)) {
+      root.innerHTML =
+        '<div class="card"><p class="muted">Loading ' +
+        waveSessionLabel +
+        " session…</p></div>";
       ensureDraft(opts || null, function () {
         if (root.isConnected) paintLog(root);
       });
@@ -1182,14 +1322,16 @@
     // Prefer explicit waveDay from Home even when a draft already exists
     if (
       starting &&
-      program &&
-      program.kind === "pullup_wave" &&
+      progIsWave &&
       opts &&
       (opts.waveDay === "intensive" || opts.waveDay === "volume") &&
       draft &&
       draft.waveDay !== opts.waveDay
     ) {
-      root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
+      root.innerHTML =
+        '<div class="card"><p class="muted">Loading ' +
+        waveSessionLabel +
+        " session…</p></div>";
       draft = null;
       ensureDraft(opts, function () {
         if (root.isConnected) paintLog(root);

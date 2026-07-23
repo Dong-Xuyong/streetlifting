@@ -47,6 +47,34 @@
     return Number(n).toFixed(d);
   }
 
+  /** Epley on added belt load only — analytics never adds bodyweight into the total. */
+  function e1rmAdded(loadKg, reps) {
+    var load = Number(loadKg) || 0;
+    var r = Number(reps) || 0;
+    if (r <= 1) return load;
+    return load * (1 + r / 30);
+  }
+
+  function bestAddedSet(exerciseId) {
+    var hist = store().historyFor(exerciseId) || [];
+    var best = null;
+    for (var i = 0; i < hist.length; i++) {
+      var row = hist[i];
+      if (!row) continue;
+      var e = e1rmAdded(row.loadKg, row.reps);
+      if (!best || e > best.e1rm) {
+        best = {
+          dateISO: row.dateISO,
+          bodyweightKg: row.bodyweightKg,
+          loadKg: row.loadKg,
+          reps: row.reps,
+          e1rm: e,
+        };
+      }
+    }
+    return best;
+  }
+
   function fmtLoad(kg) {
     return fmt(fromKg(kg), 1) + " " + unitLabel();
   }
@@ -279,7 +307,7 @@
     return svg;
   }
 
-  /** Best e1RM per session date (chronological). */
+  /** Best added-load e1RM per session date (chronological). */
   function bestE1rmByDate(exerciseId) {
     var hist = store().historyFor(exerciseId) || [];
     var byDate = {};
@@ -287,7 +315,8 @@
       var row = hist[i];
       var d = row.dateISO || "";
       if (!d) continue;
-      if (!byDate[d] || row.e1rm > byDate[d]) byDate[d] = row.e1rm;
+      var e = e1rmAdded(row.loadKg, row.reps);
+      if (!byDate[d] || e > byDate[d]) byDate[d] = e;
     }
     var dates = Object.keys(byDate).sort();
     return dates.map(function (date) {
@@ -349,7 +378,7 @@
     var sum = 0;
     var complete = true;
     COMP_LIFTS.forEach(function (lift) {
-      var best = store().bestSet(lift.id);
+      var best = bestAddedSet(lift.id);
       if (!best) complete = false;
       else sum += best.e1rm;
     });
@@ -360,7 +389,7 @@
   function missingCompLifts() {
     var missing = [];
     COMP_LIFTS.forEach(function (lift) {
-      if (!store().bestSet(lift.id)) missing.push(lift.label);
+      if (!bestAddedSet(lift.id)) missing.push(lift.label);
     });
     return missing;
   }
@@ -385,7 +414,6 @@
       var sess = sessions[i];
       var key = isoWeekKey(sess.dateISO || "");
       if (!weeks[key]) weeks[key] = { week: key, sets: 0, tonnage: 0 };
-      var bw = Number(sess.bodyweightKg) || 0;
       var sets = sess.sets || [];
       for (var j = 0; j < sets.length; j++) {
         var set = sets[j];
@@ -393,7 +421,7 @@
         var load = Number(set.loadKg) || 0;
         var reps = Number(set.reps) || 0;
         weeks[key].sets += 1;
-        weeks[key].tonnage += (bw + load) * reps;
+        weeks[key].tonnage += load * reps;
       }
     }
     return Object.keys(weeks)
@@ -514,11 +542,11 @@
     var html =
       '<div class="card">' +
       "<h2>Competition PRs</h2>" +
-      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Best belt load · e1RM underneath</p>';
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Best belt load · e1RM on added load only</p>';
 
     var any = false;
     COMP_LIFTS.forEach(function (lift) {
-      var best = store().bestSet(lift.id);
+      var best = bestAddedSet(lift.id);
       if (!best) {
         html +=
           '<div class="pr-row">' +
@@ -561,7 +589,7 @@
     var html =
       '<div class="card">' +
       "<h2>Streetlifting total</h2>" +
-      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Sum of best e1RM across the four competition lifts</p>';
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Sum of best added-load e1RM across the four competition lifts</p>';
 
     if (current == null) {
       html +=
@@ -628,7 +656,7 @@
     var html =
       '<div class="card">' +
       "<h2>e1RM trends</h2>" +
-      '<p class="muted small" style="margin-top:-6px;margin-bottom:12px">Best estimated 1RM each session</p>';
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:12px">Best estimated 1RM each session (added load only)</p>';
 
     var any = false;
     COMP_LIFTS.forEach(function (lift) {
@@ -684,11 +712,11 @@
     var html =
       '<div class="card">' +
       "<h2>Relative strength</h2>" +
-      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">e1RM ÷ bodyweight for pull-up and dip</p>';
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Added-load e1RM ÷ bodyweight for pull-up and dip</p>';
 
     var any = false;
     REL_LIFTS.forEach(function (lift) {
-      var best = store().bestSet(lift.id);
+      var best = bestAddedSet(lift.id);
       if (!best) {
         html +=
           '<div class="pr-row">' +
@@ -731,7 +759,7 @@
     var html =
       '<div class="card">' +
       "<h2>Weekly volume</h2>" +
-      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Tonnage = (bodyweight + load) × reps</p>';
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Tonnage = belt load × reps</p>';
 
     if (!weeks.length) {
       html += sectionEmpty("No volume yet", "Complete sets in a logged session.");

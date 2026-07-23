@@ -8,6 +8,7 @@
   var EXERCISES_URL = "data/exercises.json";
   var SQUAT_CYCLE_URL = "data/squat-1rm-cycle.json";
   var PULLUP_WAVE_URL = "data/pullup-wave-cycle.json";
+  var DIP_WAVE_URL = "data/dip-wave-cycle.json";
 
   var state = null;
   var builtinsCache = null;
@@ -16,6 +17,26 @@
   var squatSchemePromise = null;
   var pullupWaveCache = null;
   var pullupWavePromise = null;
+  var dipWaveCache = null;
+  var dipWavePromise = null;
+
+  function isRepWave(program) {
+    return !!(
+      program &&
+      (program.kind === "pullup_wave" || program.kind === "dip_wave")
+    );
+  }
+
+  function waveLiftLabel(program) {
+    if (!program) return "Pull-up";
+    if (program.kind === "dip_wave" || program.exerciseId === "dip") return "Dip";
+    return "Pull-up";
+  }
+
+  function waveSchemeCache(program) {
+    if (program && program.kind === "dip_wave") return dipWaveCache;
+    return pullupWaveCache;
+  }
 
   function defaults() {
     return {
@@ -578,6 +599,34 @@
     return pullupWavePromise;
   }
 
+  function loadDipWaveScheme() {
+    if (dipWaveCache) return Promise.resolve(dipWaveCache);
+    if (dipWavePromise) return dipWavePromise;
+    dipWavePromise = fetch(DIP_WAVE_URL)
+      .then(function (res) {
+        if (!res.ok) throw new Error("Failed to load dip wave: " + res.status);
+        return res.json();
+      })
+      .then(function (scheme) {
+        dipWaveCache = scheme;
+        return scheme;
+      })
+      .catch(function (err) {
+        dipWavePromise = null;
+        throw err;
+      });
+    return dipWavePromise;
+  }
+
+  function loadWaveScheme(programOrKind) {
+    var kind =
+      typeof programOrKind === "string"
+        ? programOrKind
+        : programOrKind && programOrKind.kind;
+    if (kind === "dip_wave") return loadDipWaveScheme();
+    return loadPullupWaveScheme();
+  }
+
   function pullupWavePhase(program, scheme) {
     var phases = (scheme && scheme.phases) || [];
     if (!phases.length) return null;
@@ -622,8 +671,8 @@
   function setPullupNextWaveDay(programOrId, waveDay) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
-    if (!program || program.kind !== "pullup_wave") {
-      throw new Error("Not a pull-up wave program");
+    if (!isRepWave(program)) {
+      throw new Error("Not a wave program");
     }
     if (waveDay !== "intensive" && waveDay !== "volume") {
       throw new Error("waveDay must be intensive or volume");
@@ -636,7 +685,7 @@
   function clearPullupNextWaveDay(programOrId, matchedWaveDay) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
-    if (!program || program.kind !== "pullup_wave") return program;
+    if (!isRepWave(program)) return program;
     if (matchedWaveDay && program.nextWaveDay !== matchedWaveDay) return program;
     if (program.nextWaveDay == null) return program;
     program.nextWaveDay = null;
@@ -650,7 +699,10 @@
     var info = pullupWavePhase(program, scheme);
     if (!info) return null;
     var phase = info.phase;
-    var exId = program.exerciseId || scheme.exerciseId || "pullup";
+    var exId =
+      program.exerciseId ||
+      scheme.exerciseId ||
+      (program.kind === "dip_wave" ? "dip" : "pullup");
     var intensiveLoad = roundLoadKg(Number(program.intensiveLoadKg));
     if (intensiveLoad == null) intensiveLoad = roundLoadKg(Number(program.startLoadKg)) || 0;
     var loadKg = intensiveLoad;
@@ -705,8 +757,8 @@
   function advancePullupMicro(programOrId) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
-    if (!program || program.kind !== "pullup_wave") {
-      throw new Error("Not a pull-up wave program");
+    if (!isRepWave(program)) {
+      throw new Error("Not a wave program");
     }
     var step = Number(program.microStepKg);
     if (!isFinite(step) || step <= 0) step = 2.5;
@@ -721,8 +773,8 @@
   function retreatPullupMicro(programOrId) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
-    if (!program || program.kind !== "pullup_wave") {
-      throw new Error("Not a pull-up wave program");
+    if (!isRepWave(program)) {
+      throw new Error("Not a wave program");
     }
     var step = Number(program.microStepKg);
     if (!isFinite(step) || step <= 0) step = 2.5;
@@ -742,10 +794,10 @@
   function advancePullupMacro(programOrId) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
-    if (!program || program.kind !== "pullup_wave") {
-      throw new Error("Not a pull-up wave program");
+    if (!isRepWave(program)) {
+      throw new Error("Not a wave program");
     }
-    var scheme = pullupWaveCache;
+    var scheme = waveSchemeCache(program);
     var maxIdx = scheme && scheme.phases ? scheme.phases.length - 1 : 2;
     var idx = Number(program.phaseIndex) || 0;
     if (idx >= maxIdx) {
@@ -760,8 +812,8 @@
   function retreatPullupMacro(programOrId) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
-    if (!program || program.kind !== "pullup_wave") {
-      throw new Error("Not a pull-up wave program");
+    if (!isRepWave(program)) {
+      throw new Error("Not a wave program");
     }
     var idx = Number(program.phaseIndex) || 0;
     if (idx <= 0) {
@@ -771,6 +823,33 @@
     program.nextWaveDay = "intensive";
     upsertProgram(program);
     return { program: program, retreated: true, atStart: program.phaseIndex <= 0 };
+  }
+
+  /** End full cycle: back to first phase (3×10) and +microStepKg on intensive load. */
+  function finishPullupCycle(programOrId) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!isRepWave(program)) {
+      throw new Error("Not a wave program");
+    }
+    var step = Number(program.microStepKg);
+    if (!isFinite(step) || step <= 0) step = 2.5;
+    var cur = Number(program.intensiveLoadKg);
+    if (!isFinite(cur)) cur = Number(program.startLoadKg) || 0;
+    program.phaseIndex = 0;
+    program.intensiveLoadKg = roundLoadKg(cur + step);
+    program.nextWaveDay = "intensive";
+    upsertProgram(program);
+    return program;
+  }
+
+  function pullupWaveAtPeak(program, scheme) {
+    var cached = waveSchemeCache(program);
+    var phases =
+      (scheme && scheme.phases) || (cached && cached.phases) || [];
+    if (!phases.length) return false;
+    var idx = Number(program && program.phaseIndex) || 0;
+    return idx >= phases.length - 1;
   }
 
   window.SL.store = {
@@ -799,7 +878,11 @@
     loadSquatCycleScheme: loadSquatCycleScheme,
     expandPercentCycle: expandPercentCycle,
     nextCycleSession: nextCycleSession,
+    isRepWave: isRepWave,
+    waveLiftLabel: waveLiftLabel,
     loadPullupWaveScheme: loadPullupWaveScheme,
+    loadDipWaveScheme: loadDipWaveScheme,
+    loadWaveScheme: loadWaveScheme,
     currentPullupWaveSession: currentPullupWaveSession,
     setPullupNextWaveDay: setPullupNextWaveDay,
     clearPullupNextWaveDay: clearPullupNextWaveDay,
@@ -807,6 +890,8 @@
     retreatPullupMicro: retreatPullupMicro,
     advancePullupMacro: advancePullupMacro,
     retreatPullupMacro: retreatPullupMacro,
+    finishPullupCycle: finishPullupCycle,
+    pullupWaveAtPeak: pullupWaveAtPeak,
     todayISO: todayISO,
   };
 })();

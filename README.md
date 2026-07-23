@@ -10,7 +10,7 @@ Mobile-first streetlifting tracker: programs, session logging, rest timer, analy
 - **Log** — log/edit sets with rest timer; prefill from program day
 - **History** — month calendar of trained days; session detail with personal notes per exercise section
 - **Analytics** — e1RM trends, streetlifting total, relative strength, volume, PRs
-- **Program** — multi-day programs with double/linear/manual progression
+- **Program** — multi-day programs with double/linear/manual progression; pull-up and dip micro/macro waves
 - **Exercises** — competition + accessory catalog, custom exercises, cues
 - **Settings** — kg/lb display, session defaults, belt-load plate stack, full backup export/import (programs + workout history), wipe
 
