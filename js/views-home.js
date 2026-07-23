@@ -83,6 +83,53 @@
     return days[(idx + 1) % days.length];
   }
 
+  function renderCycleSessionCard(program, session, unit) {
+    var html =
+      '<div class="card">' +
+      "<h2>Program</h2>" +
+      '<div class="spread" style="margin-bottom:12px">' +
+      "<div><strong>" +
+      esc(program.name || "Squat cycle") +
+      '</strong><div class="muted small">Active · target ' +
+      esc(fmtWeight(program.target1rmKg, unit)) +
+      "</div></div>" +
+      '<button type="button" class="btn secondary sm" data-action="goto-program">View</button>' +
+      "</div>";
+
+    if (!session) {
+      html += '<p class="muted">Schedule unavailable.</p></div>';
+      return html;
+    }
+
+    html +=
+      "<h2>Next session</h2>" +
+      '<p style="font-weight:700;margin-bottom:4px">' +
+      esc(session.name) +
+      "</p>" +
+      '<p class="muted small" style="margin-bottom:10px">' +
+      esc(session.dateISO) +
+      "</p>";
+
+    var exercises = session.exercises || [];
+    for (var i = 0; i < exercises.length; i++) {
+      var pe = exercises[i];
+      var load =
+        pe.loadKgMax != null && pe.loadKgMax !== pe.loadKg
+          ? fmtWeight(pe.loadKg, unit) + "–" + fmtWeight(pe.loadKgMax, unit)
+          : fmtWeight(pe.loadKg, unit);
+      html +=
+        '<div class="pr-row">' +
+        '<div><div class="name">Squat</div><div class="sub">' +
+        esc(pe.sets + " × " + pe.reps + " @ " + (pe.pctLabel || "") + " · " + load) +
+        "</div></div></div>";
+    }
+
+    html +=
+      '<button type="button" class="btn block" data-action="start-workout" style="margin-top:14px">Start workout</button>' +
+      "</div>";
+    return html;
+  }
+
   function startWorkout() {
     SL.pendingStart = true;
     if (typeof SL.navigate === "function") {
@@ -219,28 +266,50 @@
     var settings = data.settings || {};
     var unit = unitLabel(settings);
     var program = SL.store.getActiveProgram();
-    var day = program ? nextProgramDay(program) : null;
     var names = exerciseNameMap();
 
-    root.innerHTML =
-      renderBodyweight(settings, unit) +
-      renderProgramCard(program, day, names, unit) +
-      renderPrs(unit);
+    function finish(programHtml) {
+      root.innerHTML =
+        renderBodyweight(settings, unit) + programHtml + renderPrs(unit);
 
-    root.onclick = function (e) {
-      var t = e.target;
-      if (!t || !t.closest) return;
-      var btn = t.closest("[data-action]");
-      if (!btn) return;
-      var action = btn.getAttribute("data-action");
-      if (action === "goto-program") {
-        SL.navigate("program");
-      } else if (action === "start-workout") {
-        startWorkout();
-      }
-    };
+      root.onclick = function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest("[data-action]");
+        if (!btn) return;
+        var action = btn.getAttribute("data-action");
+        if (action === "goto-program") {
+          SL.navigate("program");
+        } else if (action === "start-workout") {
+          startWorkout();
+        }
+      };
+    }
 
-    // Enrich names from builtins when available (async, non-blocking).
+    if (program && program.kind === "percent_cycle") {
+      finish(
+        '<div class="card"><p class="muted">Loading squat schedule…</p></div>'
+      );
+      SL.store
+        .loadSquatCycleScheme()
+        .then(function (scheme) {
+          if (!root.isConnected) return;
+          var session = SL.store.nextCycleSession(program, scheme);
+          finish(renderCycleSessionCard(program, session, unit));
+        })
+        .catch(function () {
+          if (!root.isConnected) return;
+          finish(
+            '<div class="card"><h2>Program</h2><p class="muted">Could not load squat cycle schedule.</p>' +
+              '<button type="button" class="btn block" data-action="goto-program">Open Programs</button></div>'
+          );
+        });
+      return;
+    }
+
+    var day = program ? nextProgramDay(program) : null;
+    finish(renderProgramCard(program, day, names, unit));
+
     if (typeof SL.store.listExercises === "function") {
       SL.store.listExercises().then(function (list) {
         if (!root.isConnected) return;
@@ -253,12 +322,9 @@
           }
         }
         if (changed && program && day) {
-          root.innerHTML =
-            renderBodyweight(settings, unit) +
-            renderProgramCard(program, day, names, unit) +
-            renderPrs(unit);
+          finish(renderProgramCard(program, day, names, unit));
         }
-      }).catch(function () { /* ignore catalog fetch errors on home */ });
+      }).catch(function () { /* ignore */ });
     }
   }
 

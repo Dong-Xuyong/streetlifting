@@ -1,0 +1,91 @@
+{
+  "id": "squat-1rm-4w",
+  "name": "Squat 1RM Peak (4 weeks)",
+  "exerciseId": "squat",
+  "weeks": [
+    {
+      "week": 1,
+      "days": [
+        {
+          "day": 1,
+          "name": "Day 1",
+          "sets": [
+            { "sets": 1, "reps": 3, "pct": 0.82 },
+            { "sets": 3, "reps": 6, "pct": 0.7 }
+          ]
+        },
+        {
+          "day": 2,
+          "name": "Day 2",
+          "sets": [
+            { "sets": 2, "reps": 1, "pct": 0.88 },
+            { "sets": 2, "reps": 5, "pct": 0.78 }
+          ]
+        }
+      ]
+    },
+    {
+      "week": 2,
+      "days": [
+        {
+          "day": 1,
+          "name": "Day 1",
+          "sets": [
+            { "sets": 1, "reps": 3, "pct": 0.86 },
+            { "sets": 3, "reps": 6, "pct": 0.75 }
+          ]
+        },
+        {
+          "day": 2,
+          "name": "Day 2",
+          "sets": [
+            { "sets": 2, "reps": 1, "pct": 0.91 },
+            { "sets": 3, "reps": 5, "pct": 0.78 }
+          ]
+        }
+      ]
+    },
+    {
+      "week": 3,
+      "days": [
+        {
+          "day": 1,
+          "name": "Day 1",
+          "sets": [
+            { "sets": 1, "reps": 3, "pct": 0.89 },
+            { "sets": 3, "reps": 6, "pct": 0.75 }
+          ]
+        },
+        {
+          "day": 2,
+          "name": "Day 2",
+          "sets": [
+            { "sets": 1, "reps": 1, "pct": 1.0 },
+            { "sets": 2, "reps": 5, "pct": 0.8 },
+            { "sets": 1, "reps": 5, "pct": 0.7 }
+          ]
+        }
+      ]
+    },
+    {
+      "week": 4,
+      "days": [
+        {
+          "day": 1,
+          "name": "Day 1",
+          "sets": [
+            { "sets": 1, "reps": 3, "pct": 0.82 },
+            { "sets": 2, "reps": 6, "pct": 0.7 }
+          ]
+        },
+        {
+          "day": 2,
+          "name": "Day 2",
+          "sets": [
+            { "sets": 1, "reps": 1, "pctMin": 0.98, "pctMax": 1.0 }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -152,6 +152,53 @@
       programId: program ? program.id : null,
       dayId: day ? day.id : null,
       dayName: day ? day.name || null : null,
+      week: null,
+      dayNum: null,
+      cycleKey: null,
+      sets: sets,
+    };
+  }
+
+  function draftFromCycleSession(program, session) {
+    var s = settings();
+    var sets = [];
+    var exercises = (session && session.exercises) || [];
+    for (var i = 0; i < exercises.length; i++) {
+      var pe = exercises[i];
+      var count = pe.sets != null && pe.sets > 0 ? pe.sets : 1;
+      var repLabel = String(pe.reps != null ? pe.reps : "");
+      if (pe.pctLabel) {
+        repLabel =
+          (pe.reps != null ? pe.reps : "?") +
+          " @ " +
+          pe.pctLabel +
+          (pe.loadKgMax != null && pe.loadKgMax !== pe.loadKg
+            ? " (" + pe.loadKg + "-" + pe.loadKgMax + " kg)"
+            : "");
+      }
+      for (var k = 0; k < count; k++) {
+        sets.push({
+          exerciseId: pe.exerciseId || "squat",
+          loadKg: pe.loadKg != null ? pe.loadKg : null,
+          reps: pe.reps != null ? pe.reps : null,
+          rpe: null,
+          completed: false,
+          targetLoadKg: pe.loadKg != null ? pe.loadKg : null,
+          targetLoadKgMax: pe.loadKgMax != null ? pe.loadKgMax : null,
+          targetRepsLabel: repLabel,
+        });
+      }
+    }
+    return {
+      id: uid(),
+      dateISO: (session && session.dateISO) || todayISO(),
+      bodyweightKg: s.bodyweightKg,
+      programId: program ? program.id : null,
+      dayId: session ? session.id : null,
+      dayName: session ? session.name || null : null,
+      week: session ? session.week : null,
+      dayNum: session ? session.day : null,
+      cycleKey: session ? session.id : null,
       sets: sets,
     };
   }
@@ -185,13 +232,14 @@
     return false;
   }
 
-  function ensureDraft(opts) {
+  function ensureDraft(opts, done) {
     if (opts && opts.sessionId) {
       var sessions = SL.store.listSessions() || [];
       for (var i = 0; i < sessions.length; i++) {
         if (sessions[i].id === opts.sessionId) {
           draft = draftFromSession(sessions[i]);
           SL.pendingStart = false;
+          if (done) done(draft);
           return draft;
         }
       }
@@ -199,6 +247,27 @@
 
     if (shouldPrefill(opts) || !draft) {
       var program = SL.store.getActiveProgram();
+
+      if (shouldPrefill(opts) && program && program.kind === "percent_cycle") {
+        SL.pendingStart = false;
+        SL.store
+          .loadSquatCycleScheme()
+          .then(function (scheme) {
+            var session = SL.store.nextCycleSession(program, scheme);
+            draft = session
+              ? draftFromCycleSession(program, session)
+              : emptyDraft();
+            if (done) done(draft);
+            else if (typeof SL.refresh === "function") SL.refresh();
+          })
+          .catch(function () {
+            draft = emptyDraft();
+            if (done) done(draft);
+            else if (typeof SL.refresh === "function") SL.refresh();
+          });
+        return draft;
+      }
+
       var day = null;
       if (opts && opts.dayId && program) {
         var days = program.days || [];
@@ -223,6 +292,7 @@
       }
       SL.pendingStart = false;
     }
+    if (done) done(draft);
     return draft;
   }
 
@@ -573,6 +643,9 @@
     };
     if (draft.programId) sess.programId = draft.programId;
     if (draft.dayId) sess.dayId = draft.dayId;
+    if (draft.week != null) sess.week = draft.week;
+    if (draft.dayNum != null) sess.day = draft.dayNum;
+    if (draft.cycleKey) sess.cycleKey = draft.cycleKey;
 
     SL.store.upsertSession(sess);
 
@@ -593,18 +666,26 @@
   }
 
   function paintLog(root) {
+    ensureOverlay();
+    if (!draft) draft = emptyDraft();
     var s = settings();
     var unit = s.unit;
     var program = SL.store.getActiveProgram();
-    var day = program ? nextProgramDay(program) : null;
-    var linked = !!(draft.programId && draft.dayId);
+    var day =
+      program && program.kind !== "percent_cycle" ? nextProgramDay(program) : null;
+    var linked = !!(draft.programId && (draft.dayId || draft.cycleKey));
 
     SL.store.listExercises().then(function (exercises) {
       if (SL.app && SL.app.currentTab && SL.app.currentTab !== "log") return;
       exercises = exercises || [];
 
       var linkHtml = "";
-      if (program && day) {
+      if (program && program.kind === "percent_cycle" && linked) {
+        linkHtml =
+          '<p class="muted small">Linked to <strong>' +
+          esc(draft.dayName || "squat cycle session") +
+          "</strong></p>";
+      } else if (program && day) {
         linkHtml =
           '<label class="field row" style="align-items:center;gap:10px">' +
           '<input type="checkbox" id="log-link-day"' +
@@ -663,8 +744,20 @@
   }
 
   function renderLog(root, opts) {
+    var program = SL.store.getActiveProgram();
+    if (
+      (SL.pendingStart || (opts && opts.startFromProgram)) &&
+      program &&
+      program.kind === "percent_cycle" &&
+      (!draft || !draft.cycleKey)
+    ) {
+      root.innerHTML = '<div class="card"><p class="muted">Loading squat session…</p></div>';
+      ensureDraft(opts || null, function () {
+        if (root.isConnected) paintLog(root);
+      });
+      return;
+    }
     ensureDraft(opts || null);
-    ensureOverlay();
     paintLog(root);
   }
 

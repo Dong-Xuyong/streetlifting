@@ -6,12 +6,50 @@
   window.SL.views = window.SL.views || {};
 
   var state = {
-    mode: "list", // list | edit
+    mode: "list", // list | edit | squat-cycle | squat-schedule
     programId: null,
     dayIndex: null, // null = program meta; number = editing that day
     exercises: null,
     exercisesError: null,
+    squatScheme: null,
   };
+
+  var KG_TO_LB = 2.2046226218;
+
+  function settingsUnit() {
+    var s = SL.store.get().settings || {};
+    return s.unit === "lb" ? "lb" : "kg";
+  }
+
+  function displayToKg(val, unit) {
+    var n = Number(val);
+    if (!isFinite(n) || n <= 0) return null;
+    return unit === "lb" ? n / KG_TO_LB : n;
+  }
+
+  function kgToDisplay(kg, unit) {
+    if (kg == null || !isFinite(kg)) return "";
+    var v = unit === "lb" ? kg * KG_TO_LB : kg;
+    var r = Math.round(v * 10) / 10;
+    return Number.isInteger(r) ? String(r) : r.toFixed(1);
+  }
+
+  function fmtLoadRange(ex, unit) {
+    if (ex.loadKgMax != null && ex.loadKgMax !== ex.loadKg) {
+      return kgToDisplay(ex.loadKg, unit) + "-" + kgToDisplay(ex.loadKgMax, unit) + " " + unit;
+    }
+    return kgToDisplay(ex.loadKg, unit) + " " + unit;
+  }
+
+  function todayLocalISO() {
+    if (typeof SL.store.todayISO === "function") return SL.store.todayISO();
+    var d = new Date();
+    var m = String(d.getMonth() + 1);
+    if (m.length < 2) m = "0" + m;
+    var day = String(d.getDate());
+    if (day.length < 2) day = "0" + day;
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
 
   function esc(str) {
     return String(str == null ? "" : str)
@@ -149,13 +187,18 @@
     } else {
       for (var i = 0; i < programs.length; i++) {
         var p = programs[i];
-        var dayCount = (p.days && p.days.length) || 0;
+        var metaLabel =
+          p.kind === "percent_cycle"
+            ? "4-week % cycle"
+            : ((p.days && p.days.length) || 0) +
+              " day" +
+              ((p.days && p.days.length) === 1 ? "" : "s");
         html += '<div class="session-card" data-action="edit" data-id="' + esc(p.id) + '" style="cursor:default">';
         html += '<div class="head">';
         html += '<span class="date">' + esc(p.name);
         if (p.active) html += '<span class="badge">Active</span>';
         html += "</span>";
-        html += '<span class="muted small">' + dayCount + " day" + (dayCount === 1 ? "" : "s") + "</span>";
+        html += '<span class="muted small">' + esc(metaLabel) + "</span>";
         html += "</div>";
         html += '<div class="row" style="flex-wrap:wrap;margin-top:8px">';
         if (!p.active) {
@@ -191,6 +234,10 @@
       '<p class="muted" style="margin-bottom:12px">2-day double progression: pull-ups + dips (face pull if available).</p>';
     html +=
       '<button type="button" class="btn block secondary" id="prog-starter">Load starter template</button>';
+    html +=
+      '<p class="muted" style="margin:16px 0 12px">4-week squat peaking cycle. Enter your target 1RM and the app schedules every session from %.</p>';
+    html +=
+      '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
     html += "</div>";
 
     root.innerHTML = html;
@@ -220,6 +267,12 @@
       loadStarterTemplate();
     });
 
+    root.querySelector("#prog-squat-cycle").addEventListener("click", function () {
+      state.mode = "squat-cycle";
+      state.programId = null;
+      refresh();
+    });
+
     root.querySelectorAll("[data-action]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -229,9 +282,22 @@
           SL.store.setActiveProgram(id);
           refresh();
         } else if (action === "edit") {
-          state.mode = "edit";
-          state.programId = id;
-          state.dayIndex = null;
+          var prog = null;
+          var list = SL.store.listPrograms();
+          for (var pi = 0; pi < list.length; pi++) {
+            if (list[pi].id === id) {
+              prog = list[pi];
+              break;
+            }
+          }
+          if (prog && prog.kind === "percent_cycle") {
+            state.mode = "squat-schedule";
+            state.programId = id;
+          } else {
+            state.mode = "edit";
+            state.programId = id;
+            state.dayIndex = null;
+          }
           refresh();
         } else if (action === "delete") {
           if (!confirm("Delete this program?")) return;
@@ -240,6 +306,181 @@
         }
       });
     });
+  }
+
+  function renderSquatCycleForm(root) {
+    var unit = settingsUnit();
+    var html = '<div class="card">';
+    html += "<h2>Squat 1RM cycle</h2>";
+    html +=
+      '<p class="muted" style="margin-bottom:14px">What is your target one-rep max for the next four weeks? Every session load is scheduled from that goal.</p>';
+    html +=
+      '<label class="field"><span class="lbl">Target 1RM (' +
+      esc(unit) +
+      ')</span><input type="number" id="squat-target" min="1" step="0.5" inputmode="decimal" placeholder="e.g. 125" /></label>';
+    html +=
+      '<label class="field"><span class="lbl">Start date (Week 1 Day 1)</span><input type="date" id="squat-start" value="' +
+      esc(todayLocalISO()) +
+      '" /></label>';
+    html += '<div class="row" style="gap:8px;margin-top:8px">';
+    html += '<button type="button" class="btn secondary" id="squat-cancel">Cancel</button>';
+    html += '<button type="button" class="btn" id="squat-create">Create &amp; schedule</button>';
+    html += "</div></div>";
+    root.innerHTML = html;
+
+    root.querySelector("#squat-cancel").addEventListener("click", function () {
+      state.mode = "list";
+      refresh();
+    });
+
+    root.querySelector("#squat-create").addEventListener("click", function () {
+      var targetInput = root.querySelector("#squat-target");
+      var startInput = root.querySelector("#squat-start");
+      var targetKg = displayToKg(targetInput && targetInput.value, unit);
+      if (!targetKg) {
+        if (targetInput) targetInput.focus();
+        return;
+      }
+      var startDate = (startInput && startInput.value) || todayLocalISO();
+      SL.store.loadSquatCycleScheme().then(function (scheme) {
+        var program = {
+          id: uid(),
+          name: "Squat 1RM Peak — " + kgToDisplay(targetKg, unit) + " " + unit,
+          active: false,
+          kind: "percent_cycle",
+          exerciseId: "squat",
+          target1rmKg: Math.round(targetKg * 100) / 100,
+          startDateISO: startDate,
+          schemeId: (scheme && scheme.id) || "squat-1rm-4w",
+          days: [],
+        };
+        SL.store.upsertProgram(program);
+        SL.store.setActiveProgram(program.id);
+        state.mode = "squat-schedule";
+        state.programId = program.id;
+        state.squatScheme = scheme;
+        refresh();
+      }).catch(function (err) {
+        root.innerHTML =
+          '<div class="card"><p class="muted">Could not load squat cycle: ' +
+          esc((err && err.message) || "error") +
+          '</p><button type="button" class="btn" id="squat-back">Back</button></div>';
+        root.querySelector("#squat-back").addEventListener("click", function () {
+          state.mode = "list";
+          refresh();
+        });
+      });
+    });
+  }
+
+  function renderSquatSchedule(root) {
+    var program = getEditingProgram();
+    if (!program || program.kind !== "percent_cycle") {
+      state.mode = "list";
+      renderList(root);
+      return;
+    }
+    var unit = settingsUnit();
+    var paint = function (scheme) {
+      state.squatScheme = scheme;
+      var sessions = SL.store.expandPercentCycle(program, scheme);
+      var html = '<div class="card">';
+      html += '<div class="spread"><h2>' + esc(program.name) + "</h2>";
+      if (program.active) html += '<span class="badge">Active</span>';
+      html += "</div>";
+      html +=
+        '<p class="muted" style="margin-bottom:12px">Target 1RM: <strong>' +
+        esc(kgToDisplay(program.target1rmKg, unit) + " " + unit) +
+        "</strong> · starts " +
+        esc(program.startDateISO || "") +
+        "</p>";
+      html +=
+        '<label class="field"><span class="lbl">Update target 1RM (' +
+        esc(unit) +
+        ')</span><input type="number" id="squat-retarget" min="1" step="0.5" value="' +
+        esc(kgToDisplay(program.target1rmKg, unit)) +
+        '" /></label>';
+      html +=
+        '<label class="field"><span class="lbl">Start date</span><input type="date" id="squat-restartdate" value="' +
+        esc(program.startDateISO || todayLocalISO()) +
+        '" /></label>';
+      html += '<button type="button" class="btn secondary block" id="squat-apply" style="margin-bottom:14px">Update schedule</button>';
+
+      var week = null;
+      for (var i = 0; i < sessions.length; i++) {
+        var sess = sessions[i];
+        if (week !== sess.week) {
+          if (week != null) html += "</div>";
+          week = sess.week;
+          html += '<div class="card" style="margin-top:10px"><h3>Week ' + esc(sess.week) + "</h3>";
+        }
+        html += '<div class="session-card" style="margin-top:8px">';
+        html +=
+          '<div class="head"><span class="date">' +
+          esc(sess.name) +
+          '</span><span class="muted small">' +
+          esc(sess.dateISO) +
+          "</span></div>";
+        for (var e = 0; e < sess.exercises.length; e++) {
+          var ex = sess.exercises[e];
+          html +=
+            '<div class="pr-row"><div class="name">' +
+            esc(ex.sets + "×" + ex.reps + " @ " + ex.pctLabel) +
+            '</div><div class="value">' +
+            esc(fmtLoadRange(ex, unit)) +
+            "</div></div>";
+        }
+        html += "</div>";
+      }
+      if (week != null) html += "</div>";
+
+      html += '<div class="row" style="gap:8px;margin-top:14px">';
+      html += '<button type="button" class="btn secondary" id="squat-back-list">Back</button>';
+      if (!program.active) {
+        html += '<button type="button" class="btn" id="squat-activate">Set Active</button>';
+      }
+      html += "</div></div>";
+      root.innerHTML = html;
+
+      root.querySelector("#squat-back-list").addEventListener("click", function () {
+        state.mode = "list";
+        state.programId = null;
+        refresh();
+      });
+      var act = root.querySelector("#squat-activate");
+      if (act) {
+        act.addEventListener("click", function () {
+          SL.store.setActiveProgram(program.id);
+          refresh();
+        });
+      }
+      root.querySelector("#squat-apply").addEventListener("click", function () {
+        var t = displayToKg(root.querySelector("#squat-retarget").value, unit);
+        var sd = root.querySelector("#squat-restartdate").value || program.startDateISO;
+        if (!t) return;
+        program.target1rmKg = Math.round(t * 100) / 100;
+        program.startDateISO = sd;
+        program.name = "Squat 1RM Peak — " + kgToDisplay(t, unit) + " " + unit;
+        SL.store.upsertProgram(program);
+        refresh();
+      });
+    };
+
+    if (state.squatScheme) {
+      paint(state.squatScheme);
+    } else {
+      root.innerHTML = '<div class="card"><p class="muted">Loading schedule…</p></div>';
+      SL.store.loadSquatCycleScheme().then(paint).catch(function (err) {
+        root.innerHTML =
+          '<div class="card"><p class="muted">' +
+          esc((err && err.message) || "Failed to load") +
+          '</p><button type="button" class="btn" id="squat-back-list">Back</button></div>';
+        root.querySelector("#squat-back-list").addEventListener("click", function () {
+          state.mode = "list";
+          refresh();
+        });
+      });
+    }
   }
 
   function renderDayEditor(root, program, dayIndex, catalog) {
@@ -551,7 +792,11 @@
 
   function render(root) {
     if (!root) return;
-    if (state.mode === "edit") {
+    if (state.mode === "squat-cycle") {
+      renderSquatCycleForm(root);
+    } else if (state.mode === "squat-schedule") {
+      renderSquatSchedule(root);
+    } else if (state.mode === "edit") {
       renderEdit(root);
     } else {
       renderList(root);
@@ -559,6 +804,8 @@
   }
 
   function title() {
+    if (state.mode === "squat-cycle") return "Squat 1RM cycle";
+    if (state.mode === "squat-schedule") return "Squat schedule";
     if (state.mode === "edit" && state.dayIndex != null) return "Edit day";
     if (state.mode === "edit") return "Edit program";
     return "Programs";

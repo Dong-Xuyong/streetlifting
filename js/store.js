@@ -6,10 +6,13 @@
 
   var STORAGE_KEY = "streetlifting-v1";
   var EXERCISES_URL = "data/exercises.json";
+  var SQUAT_CYCLE_URL = "data/squat-1rm-cycle.json";
 
   var state = null;
   var builtinsCache = null;
   var builtinsPromise = null;
+  var squatSchemeCache = null;
+  var squatSchemePromise = null;
 
   function defaults() {
     return {
@@ -303,6 +306,139 @@
     return best;
   }
 
+  function roundLoadKg(kg) {
+    if (kg == null || !isFinite(kg)) return null;
+    return Math.round(Number(kg) * 2) / 2;
+  }
+
+  function addDaysISO(dateISO, days) {
+    var parts = String(dateISO || "").split("-");
+    if (parts.length !== 3) return dateISO;
+    var d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+    d.setUTCDate(d.getUTCDate() + days);
+    var y = d.getUTCFullYear();
+    var m = String(d.getUTCMonth() + 1);
+    if (m.length < 2) m = "0" + m;
+    var day = String(d.getUTCDate());
+    if (day.length < 2) day = "0" + day;
+    return y + "-" + m + "-" + day;
+  }
+
+  function todayISO() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+
+  function loadSquatCycleScheme() {
+    if (squatSchemeCache) return Promise.resolve(squatSchemeCache);
+    if (squatSchemePromise) return squatSchemePromise;
+    squatSchemePromise = fetch(SQUAT_CYCLE_URL)
+      .then(function (res) {
+        if (!res.ok) throw new Error("Failed to load squat cycle: " + res.status);
+        return res.json();
+      })
+      .then(function (scheme) {
+        squatSchemeCache = scheme;
+        return scheme;
+      })
+      .catch(function (err) {
+        squatSchemePromise = null;
+        throw err;
+      });
+    return squatSchemePromise;
+  }
+
+  function expandSetPrescription(exId, presc, target1rmKg) {
+    var pct = presc.pct != null ? Number(presc.pct) : null;
+    var pctMin = presc.pctMin != null ? Number(presc.pctMin) : pct;
+    var pctMax = presc.pctMax != null ? Number(presc.pctMax) : pct;
+    var loadKg = roundLoadKg(target1rmKg * pctMin);
+    var loadKgMax =
+      pctMax != null && pctMax !== pctMin ? roundLoadKg(target1rmKg * pctMax) : null;
+    var pctLabel =
+      pctMax != null && pctMin != null && pctMax !== pctMin
+        ? Math.round(pctMin * 100) + "-" + Math.round(pctMax * 100) + "%"
+        : Math.round((pct != null ? pct : pctMin) * 100) + "%";
+    return {
+      exerciseId: exId,
+      sets: presc.sets != null ? Number(presc.sets) : 1,
+      reps: presc.reps != null ? Number(presc.reps) : 1,
+      pct: pct,
+      pctMin: pctMin,
+      pctMax: pctMax,
+      pctLabel: pctLabel,
+      loadKg: loadKg,
+      loadKgMax: loadKgMax,
+      startLoadKg: loadKg,
+      repMin: presc.reps,
+      repMax: presc.reps,
+      progression: "manual",
+    };
+  }
+
+  function expandPercentCycle(program, scheme) {
+    if (!program || !scheme) return [];
+    var target = Number(program.target1rmKg);
+    if (!isFinite(target) || target <= 0) return [];
+    var start = program.startDateISO || todayISO();
+    var exId = program.exerciseId || scheme.exerciseId || "squat";
+    var out = [];
+    var weeks = scheme.weeks || [];
+    for (var w = 0; w < weeks.length; w++) {
+      var week = weeks[w];
+      var weekNum = week.week != null ? week.week : w + 1;
+      var days = week.days || [];
+      for (var d = 0; d < days.length; d++) {
+        var day = days[d];
+        var dayNum = day.day != null ? day.day : d + 1;
+        var offset = (weekNum - 1) * 7 + (dayNum === 1 ? 0 : 3);
+        var prescriptions = day.sets || [];
+        var exercises = [];
+        for (var s = 0; s < prescriptions.length; s++) {
+          exercises.push(expandSetPrescription(exId, prescriptions[s], target));
+        }
+        var sessionKey = "w" + weekNum + "d" + dayNum;
+        out.push({
+          id: sessionKey,
+          week: weekNum,
+          day: dayNum,
+          name: "Week " + weekNum + " · " + (day.name || "Day " + dayNum),
+          dateISO: addDaysISO(start, offset),
+          exerciseId: exId,
+          exercises: exercises,
+        });
+      }
+    }
+    return out;
+  }
+
+  function nextCycleSession(program, scheme) {
+    var sessions = expandPercentCycle(program, scheme);
+    if (!sessions.length) return null;
+    var logged = listSessions() || [];
+    var done = {};
+    for (var i = 0; i < logged.length; i++) {
+      var sess = logged[i];
+      if (!sess || sess.programId !== program.id) continue;
+      if (sess.cycleKey) done[sess.cycleKey] = true;
+      else if (sess.week != null && sess.day != null) {
+        done["w" + sess.week + "d" + sess.day] = true;
+      }
+    }
+    var today = todayISO();
+    var upcoming = null;
+    for (var j = 0; j < sessions.length; j++) {
+      var s = sessions[j];
+      if (done[s.id]) continue;
+      if (s.dateISO <= today) return s;
+      if (!upcoming) upcoming = s;
+    }
+    return upcoming || sessions[sessions.length - 1];
+  }
+
   window.SL.store = {
     load: load,
     save: save,
@@ -324,5 +460,11 @@
     e1rm: e1rm,
     bestSet: bestSet,
     historyFor: historyFor,
+    roundLoadKg: roundLoadKg,
+    loadSquatCycleScheme: loadSquatCycleScheme,
+    expandPercentCycle: expandPercentCycle,
+    nextCycleSession: nextCycleSession,
+    todayISO: todayISO,
   };
 })();
+
