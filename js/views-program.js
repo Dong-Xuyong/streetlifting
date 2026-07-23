@@ -129,7 +129,7 @@
   }
 
   function progEx(exerciseId, sets, repMin, repMax, progression, startLoadKg, linearIncrementKg) {
-    var row = {
+    return {
       exerciseId: exerciseId,
       sets: sets,
       repMin: repMin,
@@ -138,7 +138,56 @@
       startLoadKg: startLoadKg,
       linearIncrementKg: linearIncrementKg != null ? linearIncrementKg : 0,
     };
-    return row;
+  }
+
+  function normalizeProgression(val) {
+    if (val === "linear" || val === "manual" || val === "double") return val;
+    return "double";
+  }
+
+  function progShort(prog) {
+    prog = normalizeProgression(prog);
+    if (prog === "linear") return "Linear";
+    if (prog === "manual") return "Manual";
+    return "Double";
+  }
+
+  function progHint(prog) {
+    prog = normalizeProgression(prog);
+    if (prog === "linear") return "Add the increment each session.";
+    if (prog === "manual") return "Pick the load when you log.";
+    return "Hit rep max on all sets, then add load.";
+  }
+
+  function programKindLabel(p) {
+    if (p.kind === "percent_cycle") return "4-week % cycle";
+    if (p.kind === "pullup_wave") return "Pull-up wave";
+    var n = (p.days && p.days.length) || 0;
+    return n + " day" + (n === 1 ? "" : "s");
+  }
+
+  function daySummaryLine(day, catalog) {
+    var exs = (day && day.exercises) || [];
+    if (!exs.length) return "No exercises yet";
+    var parts = [];
+    var limit = Math.min(exs.length, 3);
+    for (var i = 0; i < limit; i++) {
+      var ex = exs[i];
+      var name = exerciseName(ex.exerciseId, catalog);
+      parts.push(name + " " + ex.sets + "×" + ex.repMin + "–" + ex.repMax);
+    }
+    if (exs.length > 3) parts.push("+" + (exs.length - 3) + " more");
+    return parts.join(" · ");
+  }
+
+  function sortProgramsForList(programs) {
+    var active = [];
+    var rest = [];
+    for (var i = 0; i < programs.length; i++) {
+      if (programs[i].active) active.push(programs[i]);
+      else rest.push(programs[i]);
+    }
+    return active.concat(rest);
   }
 
   function loadStarterTemplate() {
@@ -177,84 +226,178 @@
     });
   }
 
-  function renderList(root) {
-    var programs = SL.store.listPrograms();
-    var html = "";
-
-    html += '<div class="card">';
-    html += "<h2>Programs</h2>";
-    if (!programs.length) {
-      html += '<p class="muted">No programs yet. Create one or load the starter template.</p>';
-    } else {
-      for (var i = 0; i < programs.length; i++) {
-        var p = programs[i];
-        var metaLabel =
-          p.kind === "percent_cycle"
-            ? "4-week % cycle"
-            : p.kind === "pullup_wave"
-              ? "Pull-up wave"
-              : ((p.days && p.days.length) || 0) +
-                " day" +
-                ((p.days && p.days.length) === 1 ? "" : "s");
-        html += '<div class="session-card" data-action="edit" data-id="' + esc(p.id) + '" style="cursor:default">';
-        html += '<div class="head">';
-        html += '<span class="date">' + esc(p.name);
-        if (p.active) html += '<span class="badge">Active</span>';
-        html += "</span>";
-        html += '<span class="muted small">' + esc(metaLabel) + "</span>";
-        html += "</div>";
-        html += '<div class="row" style="flex-wrap:wrap;margin-top:8px">';
-        if (!p.active) {
-          html +=
-            '<button type="button" class="btn sm secondary" data-action="set-active" data-id="' +
-            esc(p.id) +
-            '">Set Active</button>';
+  function bindListActions(root) {
+    root.querySelectorAll("[data-action]").forEach(function (el) {
+      el.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var action = el.getAttribute("data-action");
+        var id = el.getAttribute("data-id");
+        if (action === "set-active") {
+          SL.store.setActiveProgram(id);
+          refresh();
+        } else if (action === "edit") {
+          openProgram(id);
+        } else if (action === "delete") {
+          if (!confirm("Delete this program?")) return;
+          if (state.programId === id) {
+            state.mode = "list";
+            state.programId = null;
+            state.dayIndex = null;
+          }
+          SL.store.deleteProgram(id);
+          refresh();
         }
-        html +=
-          '<button type="button" class="btn sm secondary" data-action="edit" data-id="' +
-          esc(p.id) +
-          '">Edit</button>';
-        html +=
-          '<button type="button" class="btn sm danger" data-action="delete" data-id="' +
-          esc(p.id) +
-          '">Delete</button>';
-        html += "</div>";
-        html += "</div>";
+      });
+    });
+  }
+
+  function openProgram(id) {
+    var prog = null;
+    var list = SL.store.listPrograms();
+    for (var pi = 0; pi < list.length; pi++) {
+      if (list[pi].id === id) {
+        prog = list[pi];
+        break;
       }
     }
+    if (prog && prog.kind === "percent_cycle") {
+      state.mode = "squat-schedule";
+      state.programId = id;
+    } else if (prog && prog.kind === "pullup_wave") {
+      state.mode = "pullup-status";
+      state.programId = id;
+    } else {
+      state.mode = "edit";
+      state.programId = id;
+      state.dayIndex = null;
+    }
+    refresh();
+  }
+
+  function renderProgramRow(p) {
+    var metaLabel = programKindLabel(p);
+    var html = "";
+    html +=
+      '<div class="session-card" data-action="edit" data-id="' +
+      esc(p.id) +
+      '" role="button" tabindex="0">';
+    html += '<div class="head">';
+    html += '<span class="date">' + esc(p.name || "Program");
+    if (p.active) html += ' <span class="badge green">Active</span>';
+    html += "</span>";
+    html += '<span class="muted small">' + esc(metaLabel) + "</span>";
     html += "</div>";
+    if (p.active) {
+      html += '<p class="muted small" style="margin:0 0 8px">Drives Home and Start workout.</p>';
+    }
+    html += '<div class="row wrap" style="margin-top:4px">';
+    if (!p.active) {
+      html +=
+        '<button type="button" class="btn sm" data-action="set-active" data-id="' +
+        esc(p.id) +
+        '">Set active</button>';
+    }
+    html +=
+      '<button type="button" class="btn sm secondary" data-action="edit" data-id="' +
+      esc(p.id) +
+      '">Edit</button>';
+    html +=
+      '<button type="button" class="btn sm danger" data-action="delete" data-id="' +
+      esc(p.id) +
+      '">Delete</button>';
+    html += "</div></div>";
+    return html;
+  }
+
+  function renderList(root) {
+    var programs = SL.store.listPrograms();
+    var ordered = sortProgramsForList(programs);
+    var hasActive = false;
+    for (var a = 0; a < programs.length; a++) {
+      if (programs[a].active) {
+        hasActive = true;
+        break;
+      }
+    }
+
+    var html = "";
+
+    if (!programs.length) {
+      html += '<div class="card">';
+      html += '<div class="empty-state" style="padding:28px 12px">';
+      html += '<div class="title">No program yet</div>';
+      html +=
+        '<p class="hint">Load the starter template or create a program — Home needs one to show your next load.</p>';
+      html += '<div class="actions">';
+      html += '<button type="button" class="btn block" id="prog-starter">Load starter template</button>';
+      html +=
+        '<button type="button" class="btn block secondary" id="prog-create-empty">Create program</button>';
+      html += "</div></div></div>";
+    } else {
+      if (!hasActive) {
+        html += '<div class="card">';
+        html +=
+          '<p class="muted" style="margin:0 0 10px"><strong style="color:var(--amber)">No active program</strong> — Home and Start workout need one.</p>';
+        html +=
+          '<p class="muted small" style="margin:0">Tap <strong>Set active</strong> on a program below.</p>';
+        html += "</div>";
+      }
+
+      html += '<div class="card">';
+      html += "<h2>Programs</h2>";
+      html +=
+        '<p class="muted small" style="margin:0 0 12px">Tap a row to edit. Only the active program drives Home.</p>';
+      for (var i = 0; i < ordered.length; i++) {
+        html += renderProgramRow(ordered[i]);
+      }
+      html += "</div>";
+    }
 
     html += '<div class="card">';
     html += "<h2>Create</h2>";
+    html +=
+      '<p class="muted small" style="margin:0 0 10px">Blank program — add days and lifts yourself.</p>';
     html += '<label class="field"><span class="lbl">Program name</span>';
     html += '<input type="text" id="prog-new-name" placeholder="e.g. Pull + Dip block" /></label>';
     html += '<button type="button" class="btn block" id="prog-create">Create program</button>';
     html += "</div>";
 
     html += '<div class="card">';
-    html += "<h2>Template</h2>";
+    html += "<h2>Templates</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:12px">2-day double progression: pull-ups + dips (face pull if available).</p>';
+      '<p class="muted small" style="margin:0 0 12px">Ready-made blocks. Each activates on create.</p>';
+    if (programs.length) {
+      html +=
+        '<button type="button" class="btn block secondary" id="prog-starter" style="margin-bottom:10px">Load starter template</button>';
+      html +=
+        '<p class="muted small" style="margin:0 0 14px">2-day double progression: pull-ups + dips (face pull if available).</p>';
+    } else {
+      html +=
+        '<p class="muted small" style="margin:0 0 14px">Starter is in the empty state above.</p>';
+    }
+    html += '<hr class="weld" />';
     html +=
-      '<button type="button" class="btn block secondary" id="prog-starter">Load starter template</button>';
-    html +=
-      '<p class="muted" style="margin:16px 0 12px">4-week squat peaking cycle. Enter your target 1RM and the app schedules every session from %.</p>';
+      '<p class="muted" style="margin:0 0 12px">4-week squat peaking cycle. Enter your target 1RM; every session load comes from %.</p>';
     html +=
       '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
+    html += '<hr class="weld" />';
     html +=
-      '<p class="muted" style="margin:16px 0 12px">Pull-up wave: enter only the start weight for the first micro cycle (3×10). Volume matches the phase; you advance +2.5 kg or drop reps (10→6→3).</p>';
+      '<p class="muted" style="margin:0 0 12px">Pull-up wave: start weight for the first micro (3×10). Advance +2.5 kg or drop reps (10→6→3).</p>';
     html +=
       '<button type="button" class="btn block" id="prog-pullup-wave">Pull-up wave (start weight)</button>';
     html += "</div>";
 
     root.innerHTML = html;
 
-    root.querySelector("#prog-create").addEventListener("click", function () {
+    function createBlankProgram() {
       var input = root.querySelector("#prog-new-name");
       var name = (input && input.value ? input.value : "").trim();
       if (!name) {
-        if (input) input.focus();
-        return;
+        if (input) {
+          input.focus();
+          return;
+        }
+        name = "New program";
       }
       var program = {
         id: uid(),
@@ -268,11 +411,26 @@
       state.programId = program.id;
       state.dayIndex = null;
       refresh();
-    });
+    }
 
-    root.querySelector("#prog-starter").addEventListener("click", function () {
-      loadStarterTemplate();
-    });
+    var createBtn = root.querySelector("#prog-create");
+    if (createBtn) createBtn.addEventListener("click", createBlankProgram);
+
+    var createEmpty = root.querySelector("#prog-create-empty");
+    if (createEmpty) {
+      createEmpty.addEventListener("click", function () {
+        var input = root.querySelector("#prog-new-name");
+        if (input) input.focus();
+        else createBlankProgram();
+      });
+    }
+
+    var starter = root.querySelector("#prog-starter");
+    if (starter) {
+      starter.addEventListener("click", function () {
+        loadStarterTemplate();
+      });
+    }
 
     root.querySelector("#prog-squat-cycle").addEventListener("click", function () {
       state.mode = "squat-cycle";
@@ -286,57 +444,23 @@
       refresh();
     });
 
-    root.querySelectorAll("[data-action]").forEach(function (btn) {
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var action = btn.getAttribute("data-action");
-        var id = btn.getAttribute("data-id");
-        if (action === "set-active") {
-          SL.store.setActiveProgram(id);
-          refresh();
-        } else if (action === "edit") {
-          var prog = null;
-          var list = SL.store.listPrograms();
-          for (var pi = 0; pi < list.length; pi++) {
-            if (list[pi].id === id) {
-              prog = list[pi];
-              break;
-            }
-          }
-          if (prog && prog.kind === "percent_cycle") {
-            state.mode = "squat-schedule";
-            state.programId = id;
-          } else if (prog && prog.kind === "pullup_wave") {
-            state.mode = "pullup-status";
-            state.programId = id;
-          } else {
-            state.mode = "edit";
-            state.programId = id;
-            state.dayIndex = null;
-          }
-          refresh();
-        } else if (action === "delete") {
-          if (!confirm("Delete this program?")) return;
-          SL.store.deleteProgram(id);
-          refresh();
-        }
-      });
-    });
+    bindListActions(root);
   }
 
   function renderPullupWaveForm(root) {
     var unit = settingsUnit();
     var html = '<div class="card">';
+    html +=
+      '<button type="button" class="btn sm secondary" id="pullup-cancel" style="margin-bottom:12px">Back to programs</button>';
     html += "<h2>Pull-up wave</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:14px">Only one input: start weight for the first micro cycle (phase 3×10). Then Intensive 3 sets / Volume 6 sets follow the wave. You choose when to +2.5 kg or drop reps.</p>';
+      '<p class="muted" style="margin-bottom:14px">One input: start weight for the first micro (phase 3×10). Intensive 3 sets / Volume 6 sets follow the wave. You choose when to +2.5 kg or drop reps.</p>';
     html +=
-      '<label class="field"><span class="lbl">Start weight — first micro cycle (' +
+      '<label class="field"><span class="lbl">Start weight — first micro (' +
       esc(unit) +
       ')</span><input type="number" id="pullup-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" autofocus /></label>';
-    html += '<div class="row" style="gap:8px;margin-top:8px">';
-    html += '<button type="button" class="btn secondary" id="pullup-cancel">Cancel</button>';
-    html += '<button type="button" class="btn" id="pullup-create">Create program</button>';
+    html += '<div class="stack" style="margin-top:8px">';
+    html += '<button type="button" class="btn block" id="pullup-create">Create program</button>';
     html += "</div></div>";
     root.innerHTML = html;
 
@@ -355,37 +479,40 @@
       }
       var startKg = unit === "lb" ? n / KG_TO_LB : n;
       startKg = Math.round(startKg * 100) / 100;
-      SL.store.loadPullupWaveScheme().then(function (scheme) {
-        var program = {
-          id: uid(),
-          name: "Pull-up wave — " + kgToDisplay(startKg, unit) + " " + unit,
-          active: false,
-          kind: "pullup_wave",
-          exerciseId: "pullup",
-          startLoadKg: startKg,
-          intensiveLoadKg: startKg,
-          phaseIndex: 0,
-          microStepKg: 2.5,
-          nextWaveDay: "intensive",
-          schemeId: (scheme && scheme.id) || "pullup-wave",
-          days: [],
-        };
-        SL.store.upsertProgram(program);
-        SL.store.setActiveProgram(program.id);
-        state.mode = "pullup-status";
-        state.programId = program.id;
-        state.pullupScheme = scheme;
-        refresh();
-      }).catch(function (err) {
-        root.innerHTML =
-          '<div class="card"><p class="muted">Could not load pull-up wave: ' +
-          esc((err && err.message) || "error") +
-          '</p><button type="button" class="btn" id="pullup-back">Back</button></div>';
-        root.querySelector("#pullup-back").addEventListener("click", function () {
-          state.mode = "list";
+      SL.store
+        .loadPullupWaveScheme()
+        .then(function (scheme) {
+          var program = {
+            id: uid(),
+            name: "Pull-up wave — " + kgToDisplay(startKg, unit) + " " + unit,
+            active: false,
+            kind: "pullup_wave",
+            exerciseId: "pullup",
+            startLoadKg: startKg,
+            intensiveLoadKg: startKg,
+            phaseIndex: 0,
+            microStepKg: 2.5,
+            nextWaveDay: "intensive",
+            schemeId: (scheme && scheme.id) || "pullup-wave",
+            days: [],
+          };
+          SL.store.upsertProgram(program);
+          SL.store.setActiveProgram(program.id);
+          state.mode = "pullup-status";
+          state.programId = program.id;
+          state.pullupScheme = scheme;
           refresh();
+        })
+        .catch(function (err) {
+          root.innerHTML =
+            '<div class="card"><p class="muted">Could not load pull-up wave: ' +
+            esc((err && err.message) || "error") +
+            '</p><button type="button" class="btn block" id="pullup-back">Back to programs</button></div>';
+          root.querySelector("#pullup-back").addEventListener("click", function () {
+            state.mode = "list";
+            refresh();
+          });
         });
-      });
     });
   }
 
@@ -410,11 +537,20 @@
       var phaseLabel = "3×" + (phase.reps != null ? phase.reps : "?");
 
       var html = '<div class="card">';
-      html += '<div class="spread"><h2>' + esc(program.name) + "</h2>";
-      if (program.active) html += '<span class="badge">Active</span>';
-      html += "</div>";
       html +=
-        '<p class="muted" style="margin:8px 0 14px">Macro: 10 → 6 → 3 · Micro: +2.5 kg until you drop reps</p>';
+        '<button type="button" class="btn sm secondary" id="pullup-back-list" style="margin-bottom:12px">Back to programs</button>';
+      html += '<div class="spread"><h2 style="margin:0">' + esc(program.name) + "</h2>";
+      if (program.active) html += '<span class="badge green">Active</span>';
+      html += "</div>";
+      if (!program.active) {
+        html +=
+          '<p class="muted small" style="margin:8px 0 0">Not on Home yet — set active when you want this wave.</p>';
+      } else {
+        html +=
+          '<p class="muted small" style="margin:8px 0 0">Active — drives Home and Start workout.</p>';
+      }
+      html +=
+        '<p class="muted" style="margin:12px 0 14px">Macro: 10 → 6 → 3 · Micro: +2.5 kg until you drop reps</p>';
       html += '<div class="stat-grid" style="margin-bottom:14px">';
       html +=
         '<div class="stat"><div class="val">' +
@@ -429,7 +565,7 @@
       if (intensive && intensive.exercises[0]) {
         var ix = intensive.exercises[0];
         html +=
-          '<div class="session-card" style="margin-bottom:8px"><div class="head"><span class="date">Intensive</span><span class="muted small">3 sets</span></div>';
+          '<div class="session-card" style="margin-bottom:8px;cursor:default"><div class="head"><span class="date">Intensive</span><span class="muted small">3 sets</span></div>';
         html +=
           '<div class="pr-row"><div class="name">' +
           esc(ix.sets + "×" + ix.reps) +
@@ -440,7 +576,7 @@
       if (volume && volume.exercises[0]) {
         var vx = volume.exercises[0];
         html +=
-          '<div class="session-card" style="margin-bottom:8px"><div class="head"><span class="date">Volume</span><span class="muted small">6 sets</span></div>';
+          '<div class="session-card" style="margin-bottom:8px;cursor:default"><div class="head"><span class="date">Volume</span><span class="muted small">6 sets</span></div>';
         html +=
           '<div class="pr-row"><div class="name">' +
           esc(vx.sets + "×" + vx.reps) +
@@ -464,22 +600,23 @@
               ? next.waveDay
               : "intensive";
 
-      html += '<div class="card" style="margin-top:10px">';
+      html += '<hr class="weld" />';
       html += "<h3 style=\"margin:0 0 8px\">Start day</h3>";
       html +=
-        '<p class="muted small" style="margin:0 0 10px">Pick Intensive or Volume for the next workout. New micro/macro always defaults to Intensive.</p>';
-      html += '<div class="row" style="gap:8px;flex-wrap:wrap">';
+        '<p class="muted small" style="margin:0 0 10px">Pick Intensive or Volume for the next workout. New micro/macro defaults to Intensive.</p>';
+      html += '<div class="row wrap" style="margin-bottom:4px">';
       html +=
-        '<button type="button" class="btn' +
+        '<button type="button" class="btn grow' +
         (prefer === "intensive" ? "" : " secondary") +
         '" id="pullup-prefer-intensive">Intensive</button>';
       html +=
-        '<button type="button" class="btn' +
+        '<button type="button" class="btn grow' +
         (prefer === "volume" ? "" : " secondary") +
         '" id="pullup-prefer-volume">Volume</button>';
-      html += "</div></div>";
+      html += "</div>";
 
-      html += '<div class="stack" style="margin-top:12px">';
+      html += '<hr class="weld" />';
+      html += '<div class="stack">';
       html +=
         '<button type="button" class="btn block" id="pullup-micro">Next micro (+2.5 kg)</button>';
       html +=
@@ -496,12 +633,11 @@
           '<button type="button" class="btn block secondary" id="pullup-macro-back">Previous macro (raise reps)</button>';
       }
       html += "</div>";
-      html += '<div class="row" style="gap:8px;margin-top:14px">';
-      html += '<button type="button" class="btn secondary" id="pullup-back-list">Back</button>';
       if (!program.active) {
-        html += '<button type="button" class="btn" id="pullup-activate">Set Active</button>';
+        html +=
+          '<button type="button" class="btn block" id="pullup-activate" style="margin-top:14px">Set active</button>';
       }
-      html += "</div></div>";
+      html += "</div>";
       root.innerHTML = html;
 
       root.querySelector("#pullup-back-list").addEventListener("click", function () {
@@ -578,7 +714,7 @@
           root.innerHTML =
             '<div class="card"><p class="muted">' +
             esc((err && err.message) || "Failed to load") +
-            '</p><button type="button" class="btn" id="pullup-back-list">Back</button></div>';
+            '</p><button type="button" class="btn block" id="pullup-back-list">Back to programs</button></div>';
           root.querySelector("#pullup-back-list").addEventListener("click", function () {
             state.mode = "list";
             refresh();
@@ -590,9 +726,11 @@
   function renderSquatCycleForm(root) {
     var unit = settingsUnit();
     var html = '<div class="card">';
+    html +=
+      '<button type="button" class="btn sm secondary" id="squat-cancel" style="margin-bottom:12px">Back to programs</button>';
     html += "<h2>Squat 1RM cycle</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:14px">What is your target one-rep max for the next four weeks? Every session load is scheduled from that goal.</p>';
+      '<p class="muted" style="margin-bottom:14px">Target one-rep max for the next four weeks. Every session load is scheduled from that goal.</p>';
     html +=
       '<label class="field"><span class="lbl">Target 1RM (' +
       esc(unit) +
@@ -601,9 +739,8 @@
       '<label class="field"><span class="lbl">Start date (Week 1 Day 1)</span><input type="date" id="squat-start" value="' +
       esc(todayLocalISO()) +
       '" /></label>';
-    html += '<div class="row" style="gap:8px;margin-top:8px">';
-    html += '<button type="button" class="btn secondary" id="squat-cancel">Cancel</button>';
-    html += '<button type="button" class="btn" id="squat-create">Create &amp; schedule</button>';
+    html += '<div class="stack" style="margin-top:8px">';
+    html += '<button type="button" class="btn block" id="squat-create">Create &amp; schedule</button>';
     html += "</div></div>";
     root.innerHTML = html;
 
@@ -621,34 +758,37 @@
         return;
       }
       var startDate = (startInput && startInput.value) || todayLocalISO();
-      SL.store.loadSquatCycleScheme().then(function (scheme) {
-        var program = {
-          id: uid(),
-          name: "Squat 1RM Peak — " + kgToDisplay(targetKg, unit) + " " + unit,
-          active: false,
-          kind: "percent_cycle",
-          exerciseId: "squat",
-          target1rmKg: Math.round(targetKg * 100) / 100,
-          startDateISO: startDate,
-          schemeId: (scheme && scheme.id) || "squat-1rm-4w",
-          days: [],
-        };
-        SL.store.upsertProgram(program);
-        SL.store.setActiveProgram(program.id);
-        state.mode = "squat-schedule";
-        state.programId = program.id;
-        state.squatScheme = scheme;
-        refresh();
-      }).catch(function (err) {
-        root.innerHTML =
-          '<div class="card"><p class="muted">Could not load squat cycle: ' +
-          esc((err && err.message) || "error") +
-          '</p><button type="button" class="btn" id="squat-back">Back</button></div>';
-        root.querySelector("#squat-back").addEventListener("click", function () {
-          state.mode = "list";
+      SL.store
+        .loadSquatCycleScheme()
+        .then(function (scheme) {
+          var program = {
+            id: uid(),
+            name: "Squat 1RM Peak — " + kgToDisplay(targetKg, unit) + " " + unit,
+            active: false,
+            kind: "percent_cycle",
+            exerciseId: "squat",
+            target1rmKg: Math.round(targetKg * 100) / 100,
+            startDateISO: startDate,
+            schemeId: (scheme && scheme.id) || "squat-1rm-4w",
+            days: [],
+          };
+          SL.store.upsertProgram(program);
+          SL.store.setActiveProgram(program.id);
+          state.mode = "squat-schedule";
+          state.programId = program.id;
+          state.squatScheme = scheme;
           refresh();
+        })
+        .catch(function (err) {
+          root.innerHTML =
+            '<div class="card"><p class="muted">Could not load squat cycle: ' +
+            esc((err && err.message) || "error") +
+            '</p><button type="button" class="btn block" id="squat-back">Back to programs</button></div>';
+          root.querySelector("#squat-back").addEventListener("click", function () {
+            state.mode = "list";
+            refresh();
+          });
         });
-      });
     });
   }
 
@@ -664,11 +804,20 @@
       state.squatScheme = scheme;
       var sessions = SL.store.expandPercentCycle(program, scheme);
       var html = '<div class="card">';
-      html += '<div class="spread"><h2>' + esc(program.name) + "</h2>";
-      if (program.active) html += '<span class="badge">Active</span>';
-      html += "</div>";
       html +=
-        '<p class="muted" style="margin-bottom:12px">Target 1RM: <strong>' +
+        '<button type="button" class="btn sm secondary" id="squat-back-list" style="margin-bottom:12px">Back to programs</button>';
+      html += '<div class="spread"><h2 style="margin:0">' + esc(program.name) + "</h2>";
+      if (program.active) html += '<span class="badge green">Active</span>';
+      html += "</div>";
+      if (!program.active) {
+        html +=
+          '<p class="muted small" style="margin:8px 0 0">Not on Home yet — set active to use this cycle.</p>';
+      } else {
+        html +=
+          '<p class="muted small" style="margin:8px 0 0">Active — drives Home and Start workout.</p>';
+      }
+      html +=
+        '<p class="muted" style="margin:12px 0">Target 1RM: <strong>' +
         esc(kgToDisplay(program.target1rmKg, unit) + " " + unit) +
         "</strong> · starts " +
         esc(program.startDateISO || "") +
@@ -683,7 +832,8 @@
         '<label class="field"><span class="lbl">Start date</span><input type="date" id="squat-restartdate" value="' +
         esc(program.startDateISO || todayLocalISO()) +
         '" /></label>';
-      html += '<button type="button" class="btn secondary block" id="squat-apply" style="margin-bottom:14px">Update schedule</button>';
+      html +=
+        '<button type="button" class="btn secondary block" id="squat-apply" style="margin-bottom:14px">Update schedule</button>';
 
       var week = null;
       for (var i = 0; i < sessions.length; i++) {
@@ -693,7 +843,7 @@
           week = sess.week;
           html += '<div class="card" style="margin-top:10px"><h3>Week ' + esc(sess.week) + "</h3>";
         }
-        html += '<div class="session-card" style="margin-top:8px">';
+        html += '<div class="session-card" style="margin-top:8px;cursor:default">';
         html +=
           '<div class="head"><span class="date">' +
           esc(sess.name) +
@@ -713,12 +863,11 @@
       }
       if (week != null) html += "</div>";
 
-      html += '<div class="row" style="gap:8px;margin-top:14px">';
-      html += '<button type="button" class="btn secondary" id="squat-back-list">Back</button>';
       if (!program.active) {
-        html += '<button type="button" class="btn" id="squat-activate">Set Active</button>';
+        html +=
+          '<button type="button" class="btn block" id="squat-activate" style="margin-top:14px">Set active</button>';
       }
-      html += "</div></div>";
+      html += "</div>";
       root.innerHTML = html;
 
       root.querySelector("#squat-back-list").addEventListener("click", function () {
@@ -749,17 +898,105 @@
       paint(state.squatScheme);
     } else {
       root.innerHTML = '<div class="card"><p class="muted">Loading schedule…</p></div>';
-      SL.store.loadSquatCycleScheme().then(paint).catch(function (err) {
-        root.innerHTML =
-          '<div class="card"><p class="muted">' +
-          esc((err && err.message) || "Failed to load") +
-          '</p><button type="button" class="btn" id="squat-back-list">Back</button></div>';
-        root.querySelector("#squat-back-list").addEventListener("click", function () {
-          state.mode = "list";
-          refresh();
+      SL.store
+        .loadSquatCycleScheme()
+        .then(paint)
+        .catch(function (err) {
+          root.innerHTML =
+            '<div class="card"><p class="muted">' +
+            esc((err && err.message) || "Failed to load") +
+            '</p><button type="button" class="btn block" id="squat-back-list">Back to programs</button></div>';
+          root.querySelector("#squat-back-list").addEventListener("click", function () {
+            state.mode = "list";
+            refresh();
+          });
         });
-      });
     }
+  }
+
+  function renderExerciseBlock(ex, idx, catalog, unit) {
+    var prog = normalizeProgression(ex.progression);
+    var html = "";
+    html += '<div class="exercise-block" data-ex-idx="' + idx + '">';
+    html += '<div class="ex-head">';
+    html += '<span class="title">' + esc(exerciseName(ex.exerciseId, catalog)) + "</span>";
+    html +=
+      '<button type="button" class="btn sm danger" data-action="remove-ex" data-idx="' +
+      idx +
+      '">Remove</button>';
+    html += "</div>";
+    html +=
+      '<p class="muted small" style="margin:0 0 10px">' +
+      esc(ex.sets + " sets · " + ex.repMin + "–" + ex.repMax + " reps · " + progShort(prog)) +
+      "</p>";
+
+    html += '<div class="row wrap" style="align-items:flex-end">';
+    html +=
+      '<label class="field grow" style="min-width:4.5rem;margin-bottom:8px"><span class="lbl">Sets</span>' +
+      '<input type="number" min="1" inputmode="numeric" data-field="sets" data-idx="' +
+      idx +
+      '" value="' +
+      esc(ex.sets) +
+      '" /></label>';
+    html +=
+      '<label class="field grow" style="min-width:4.5rem;margin-bottom:8px"><span class="lbl">Rep min</span>' +
+      '<input type="number" min="1" inputmode="numeric" data-field="repMin" data-idx="' +
+      idx +
+      '" value="' +
+      esc(ex.repMin) +
+      '" /></label>';
+    html +=
+      '<label class="field grow" style="min-width:4.5rem;margin-bottom:8px"><span class="lbl">Rep max</span>' +
+      '<input type="number" min="1" inputmode="numeric" data-field="repMax" data-idx="' +
+      idx +
+      '" value="' +
+      esc(ex.repMax) +
+      '" /></label>';
+    html += "</div>";
+
+    html +=
+      '<label class="field"><span class="lbl">Progression</span><select data-field="progression" data-idx="' +
+      idx +
+      '">' +
+      '<option value="double"' +
+      (prog === "double" ? " selected" : "") +
+      ">Double</option>" +
+      '<option value="linear"' +
+      (prog === "linear" ? " selected" : "") +
+      ">Linear</option>" +
+      '<option value="manual"' +
+      (prog === "manual" ? " selected" : "") +
+      ">Manual</option>" +
+      "</select></label>";
+    html +=
+      '<p class="muted small prog-hint" data-idx="' +
+      idx +
+      '" style="margin:-4px 0 10px">' +
+      esc(progHint(prog)) +
+      "</p>";
+
+    html +=
+      '<label class="field"><span class="lbl">Start load (' +
+      esc(unit) +
+      ")</span>" +
+      '<input type="number" step="0.5" min="0" inputmode="decimal" data-field="startLoadKg" data-idx="' +
+      idx +
+      '" value="' +
+      esc(kgToDisplay(ex.startLoadKg != null ? ex.startLoadKg : 0, unit) || "0") +
+      '" /></label>';
+    html +=
+      '<label class="field linear-inc"' +
+      (prog === "linear" ? "" : ' style="display:none"') +
+      '><span class="lbl">Add each session (' +
+      esc(unit) +
+      ")</span>" +
+      '<input type="number" step="0.5" min="0" inputmode="decimal" data-field="linearIncrementKg" data-idx="' +
+      idx +
+      '" value="' +
+      esc(kgToDisplay(ex.linearIncrementKg != null ? ex.linearIncrementKg : 0, unit) || "0") +
+      '" /></label>';
+    html += "</div>";
+    return html;
   }
 
   function renderDayEditor(root, program, dayIndex, catalog) {
@@ -770,11 +1007,19 @@
       return;
     }
 
+    var unit = settingsUnit();
     var html = "";
+
     html += '<div class="card">';
     html +=
       '<button type="button" class="btn sm secondary" id="day-back" style="margin-bottom:12px">Back to program</button>';
-    html += "<h2>Edit day</h2>";
+    html +=
+      '<p class="muted small" style="margin:0 0 6px">' +
+      esc(program.name || "Program") +
+      " · Day " +
+      (dayIndex + 1) +
+      "</p>";
+    html += "<h2 style=\"margin:0 0 12px\">Edit day</h2>";
     html += '<label class="field"><span class="lbl">Day name</span>';
     html +=
       '<input type="text" id="day-name" value="' + esc(day.name || "") + '" /></label>';
@@ -783,73 +1028,16 @@
     html += '<div class="card">';
     html += "<h2>Exercises</h2>";
     if (!day.exercises || !day.exercises.length) {
-      html += '<p class="muted">No exercises yet.</p>';
-    }
-    for (var i = 0; i < (day.exercises || []).length; i++) {
-      var ex = day.exercises[i];
-      var prog = ex.progression || "double";
-      html += '<div class="exercise-block" data-ex-idx="' + i + '">';
-      html += '<div class="ex-head">';
-      html += '<span class="title">' + esc(exerciseName(ex.exerciseId, catalog)) + "</span>";
-      html +=
-        '<button type="button" class="btn sm danger" data-action="remove-ex" data-idx="' +
-        i +
-        '">Remove</button>';
+      html += '<div class="empty-state" style="padding:24px 8px">';
+      html += '<div class="title">No exercises yet</div>';
+      html += '<p class="hint">Add a lift below to build this day.</p>';
       html += "</div>";
-      html += '<div class="row" style="flex-wrap:wrap;align-items:flex-end">';
+    } else {
       html +=
-        '<label class="field grow" style="margin-bottom:8px"><span class="lbl">Sets</span>' +
-        '<input type="number" min="1" data-field="sets" data-idx="' +
-        i +
-        '" value="' +
-        esc(ex.sets) +
-        '" /></label>';
-      html +=
-        '<label class="field grow" style="margin-bottom:8px"><span class="lbl">Rep min</span>' +
-        '<input type="number" min="1" data-field="repMin" data-idx="' +
-        i +
-        '" value="' +
-        esc(ex.repMin) +
-        '" /></label>';
-      html +=
-        '<label class="field grow" style="margin-bottom:8px"><span class="lbl">Rep max</span>' +
-        '<input type="number" min="1" data-field="repMax" data-idx="' +
-        i +
-        '" value="' +
-        esc(ex.repMax) +
-        '" /></label>';
-      html += "</div>";
-      html +=
-        '<label class="field"><span class="lbl">Progression</span><select data-field="progression" data-idx="' +
-        i +
-        '">' +
-        '<option value="double"' +
-        (prog === "double" ? " selected" : "") +
-        ">Double</option>" +
-        '<option value="linear"' +
-        (prog === "linear" ? " selected" : "") +
-        ">Linear</option>" +
-        '<option value="manual"' +
-        (prog === "manual" ? " selected" : "") +
-        ">Manual</option>" +
-        "</select></label>";
-      html +=
-        '<label class="field"><span class="lbl">Start load (kg)</span>' +
-        '<input type="number" step="0.5" data-field="startLoadKg" data-idx="' +
-        i +
-        '" value="' +
-        esc(ex.startLoadKg != null ? ex.startLoadKg : 0) +
-        '" /></label>';
-      html +=
-        '<label class="field linear-inc"' +
-        (prog === "linear" ? "" : ' style="display:none"') +
-        '><span class="lbl">Linear increment (kg)</span>' +
-        '<input type="number" step="0.5" data-field="linearIncrementKg" data-idx="' +
-        i +
-        '" value="' +
-        esc(ex.linearIncrementKg != null ? ex.linearIncrementKg : 0) +
-        '" /></label>';
-      html += "</div>";
+        '<p class="muted small" style="margin:0 0 12px">Sets and reps first. Progression picks how load moves.</p>';
+      for (var i = 0; i < day.exercises.length; i++) {
+        html += renderExerciseBlock(day.exercises[i], i, catalog, unit);
+      }
     }
     html += "</div>";
 
@@ -890,18 +1078,40 @@
           var field = fields[f].getAttribute("data-field");
           var val = fields[f].value;
           if (field === "progression") {
-            day.exercises[idx].progression = val;
-          } else {
-            var num = parseFloat(val);
-            day.exercises[idx][field] = isFinite(num) ? num : 0;
+            day.exercises[idx].progression = normalizeProgression(val);
+          } else if (field === "sets" || field === "repMin" || field === "repMax") {
+            var intN = parseInt(val, 10);
+            day.exercises[idx][field] = isFinite(intN) && intN > 0 ? intN : 1;
+          } else if (field === "startLoadKg" || field === "linearIncrementKg") {
+            var disp = parseFloat(val);
+            if (!isFinite(disp) || disp < 0) disp = 0;
+            var kg = unit === "lb" ? disp / KG_TO_LB : disp;
+            day.exercises[idx][field] = Math.round(kg * 100) / 100;
           }
+        }
+        var row = day.exercises[idx];
+        if (row.repMin > row.repMax) {
+          var swap = row.repMin;
+          row.repMin = row.repMax;
+          row.repMax = swap;
+        }
+        row.progression = normalizeProgression(row.progression);
+        if (row.progression !== "linear") {
+          row.linearIncrementKg = row.linearIncrementKg || 0;
         }
       }
     }
 
-    root.querySelector("#day-back").addEventListener("click", function () {
-      state.dayIndex = null;
+    function persistDay(goBack) {
+      readDayFromDom();
+      program.days[dayIndex] = day;
+      SL.store.upsertProgram(program);
+      if (goBack) state.dayIndex = null;
       refresh();
+    }
+
+    root.querySelector("#day-back").addEventListener("click", function () {
+      persistDay(true);
     });
 
     root.querySelectorAll('[data-field="progression"]').forEach(function (sel) {
@@ -909,6 +1119,8 @@
         var block = sel.closest(".exercise-block");
         var inc = block && block.querySelector(".linear-inc");
         if (inc) inc.style.display = sel.value === "linear" ? "" : "none";
+        var hint = block && block.querySelector(".prog-hint");
+        if (hint) hint.textContent = progHint(sel.value);
       });
     });
 
@@ -926,7 +1138,10 @@
     root.querySelector("#add-ex-btn").addEventListener("click", function () {
       var sel = root.querySelector("#add-ex-select");
       var exId = sel && sel.value;
-      if (!exId) return;
+      if (!exId) {
+        if (sel) sel.focus();
+        return;
+      }
       readDayFromDom();
       if (!day.exercises) day.exercises = [];
       day.exercises.push(progEx(exId, 3, 5, 8, "double", 0, 0));
@@ -936,11 +1151,7 @@
     });
 
     root.querySelector("#day-save").addEventListener("click", function () {
-      readDayFromDom();
-      program.days[dayIndex] = day;
-      SL.store.upsertProgram(program);
-      state.dayIndex = null;
-      refresh();
+      persistDay(true);
     });
   }
 
@@ -969,103 +1180,154 @@
       return;
     }
 
-    var html = "";
-    html += '<div class="card">';
-    html +=
-      '<button type="button" class="btn sm secondary" id="prog-back" style="margin-bottom:12px">Back</button>';
-    html += "<h2>Edit program</h2>";
-    html += '<label class="field"><span class="lbl">Name</span>';
-    html +=
-      '<input type="text" id="prog-name" value="' + esc(program.name || "") + '" /></label>';
-    if (program.active) {
-      html += '<p class="muted"><span class="badge">Active</span> This is your current program.</p>';
-    } else {
-      html +=
-        '<button type="button" class="btn sm secondary" id="prog-set-active" style="margin-top:4px">Set Active</button>';
-    }
-    html += "</div>";
+    ensureExercises(function (catalog) {
+      program = getEditingProgram();
+      if (!program) {
+        state.mode = "list";
+        state.programId = null;
+        renderList(root);
+        return;
+      }
 
-    html += '<div class="card">';
-    html += '<div class="spread" style="margin-bottom:12px"><h2 style="margin:0">Days</h2>';
-    html += '<button type="button" class="btn sm" id="prog-add-day">Add day</button></div>';
-    if (!program.days || !program.days.length) {
-      html += '<p class="muted">No days yet. Add a day to build the template.</p>';
-    }
-    for (var i = 0; i < (program.days || []).length; i++) {
-      var d = program.days[i];
-      var nEx = (d.exercises && d.exercises.length) || 0;
-      html += '<div class="session-card" style="cursor:default">';
-      html += '<div class="head">';
-      html += '<span class="date">' + esc(d.name || "Day " + (i + 1)) + "</span>";
-      html += '<span class="muted small">' + nEx + " exercise" + (nEx === 1 ? "" : "s") + "</span>";
+      var html = "";
+      html += '<div class="card">';
+      html +=
+        '<button type="button" class="btn sm secondary" id="prog-back" style="margin-bottom:12px">Back to programs</button>';
+      html += '<p class="muted small" style="margin:0 0 6px">Programs · Edit</p>';
+      html += "<h2 style=\"margin:0 0 12px\">" + esc(program.name || "Program") + "</h2>";
+      html += '<label class="field"><span class="lbl">Name</span>';
+      html +=
+        '<input type="text" id="prog-name" value="' + esc(program.name || "") + '" /></label>';
+      if (program.active) {
+        html +=
+          '<p class="muted" style="margin:8px 0 0"><span class="badge green">Active</span> Drives Home and Start workout.</p>';
+      } else {
+        html +=
+          '<p class="muted small" style="margin:8px 0 10px">Not on Home yet.</p>';
+        html +=
+          '<button type="button" class="btn block" id="prog-set-active">Set active</button>';
+      }
       html += "</div>";
-      html += '<div class="row" style="flex-wrap:wrap;margin-top:8px">';
+
+      html += '<div class="card">';
       html +=
-        '<button type="button" class="btn sm secondary" data-action="edit-day" data-idx="' +
-        i +
-        '">Edit</button>';
-      html +=
-        '<button type="button" class="btn sm danger" data-action="delete-day" data-idx="' +
-        i +
-        '">Delete</button>';
-      html += "</div></div>";
-    }
-    html += "</div>";
+        '<div class="spread" style="margin-bottom:12px"><h2 style="margin:0">Days</h2>';
+      html += '<button type="button" class="btn sm" id="prog-add-day">Add day</button></div>';
 
-    html += '<button type="button" class="btn block" id="prog-save">Save program</button>';
+      if (!program.days || !program.days.length) {
+        html += '<div class="empty-state" style="padding:24px 8px">';
+        html += '<div class="title">No days yet</div>';
+        html += '<p class="hint">Add a day, then stack exercises for that session.</p>';
+        html += '<div class="actions">';
+        html += '<button type="button" class="btn block" id="prog-add-day-empty">Add day</button>';
+        html += "</div></div>";
+      } else {
+        html +=
+          '<p class="muted small" style="margin:0 0 12px">Tap a day to edit lifts and progression.</p>';
+        for (var i = 0; i < program.days.length; i++) {
+          var d = program.days[i];
+          var nEx = (d.exercises && d.exercises.length) || 0;
+          html +=
+            '<div class="session-card" data-action="edit-day" data-idx="' +
+            i +
+            '" role="button" tabindex="0">';
+          html += '<div class="head">';
+          html += '<span class="date">' + esc(d.name || "Day " + (i + 1)) + "</span>";
+          html +=
+            '<span class="muted small">' +
+            nEx +
+            " exercise" +
+            (nEx === 1 ? "" : "s") +
+            "</span>";
+          html += "</div>";
+          html +=
+            '<p class="ex-line" style="margin:0 0 10px">' +
+            esc(daySummaryLine(d, catalog)) +
+            "</p>";
+          html += '<div class="row wrap">';
+          html +=
+            '<button type="button" class="btn sm" data-action="edit-day" data-idx="' +
+            i +
+            '">Edit day</button>';
+          html +=
+            '<button type="button" class="btn sm danger" data-action="delete-day" data-idx="' +
+            i +
+            '">Delete</button>';
+          html += "</div></div>";
+        }
+      }
+      html += "</div>";
 
-    root.innerHTML = html;
+      html += '<button type="button" class="btn block" id="prog-save">Save program</button>';
 
-    root.querySelector("#prog-back").addEventListener("click", function () {
-      state.mode = "list";
-      state.programId = null;
-      state.dayIndex = null;
-      refresh();
-    });
+      root.innerHTML = html;
 
-    var setActiveBtn = root.querySelector("#prog-set-active");
-    if (setActiveBtn) {
-      setActiveBtn.addEventListener("click", function () {
-        SL.store.setActiveProgram(program.id);
-        refresh();
-      });
-    }
-
-    root.querySelector("#prog-add-day").addEventListener("click", function () {
-      var nameEl = root.querySelector("#prog-name");
-      if (nameEl) program.name = nameEl.value.trim() || program.name;
-      if (!program.days) program.days = [];
-      var n = program.days.length + 1;
-      program.days.push({ id: uid(), name: "Day " + n, exercises: [] });
-      SL.store.upsertProgram(program);
-      state.dayIndex = program.days.length - 1;
-      refresh();
-    });
-
-    root.querySelectorAll('[data-action="edit-day"]').forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        state.dayIndex = Number(btn.getAttribute("data-idx"));
-        refresh();
-      });
-    });
-
-    root.querySelectorAll('[data-action="delete-day"]').forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        if (!confirm("Delete this day?")) return;
-        var idx = Number(btn.getAttribute("data-idx"));
-        program.days.splice(idx, 1);
+      function addDay() {
+        var nameEl = root.querySelector("#prog-name");
+        if (nameEl) program.name = nameEl.value.trim() || program.name;
+        if (!program.days) program.days = [];
+        var n = program.days.length + 1;
+        program.days.push({ id: uid(), name: "Day " + n, exercises: [] });
         SL.store.upsertProgram(program);
+        state.dayIndex = program.days.length - 1;
+        refresh();
+      }
+
+      root.querySelector("#prog-back").addEventListener("click", function () {
+        var nameEl = root.querySelector("#prog-name");
+        if (nameEl) {
+          program.name = nameEl.value.trim() || program.name;
+          SL.store.upsertProgram(program);
+        }
+        state.mode = "list";
+        state.programId = null;
+        state.dayIndex = null;
         refresh();
       });
-    });
 
-    root.querySelector("#prog-save").addEventListener("click", function () {
-      var nameEl = root.querySelector("#prog-name");
-      program.name = nameEl ? nameEl.value.trim() || program.name : program.name;
-      SL.store.upsertProgram(program);
-      state.mode = "list";
-      state.programId = null;
-      refresh();
+      var setActiveBtn = root.querySelector("#prog-set-active");
+      if (setActiveBtn) {
+        setActiveBtn.addEventListener("click", function () {
+          var nameEl = root.querySelector("#prog-name");
+          if (nameEl) program.name = nameEl.value.trim() || program.name;
+          SL.store.upsertProgram(program);
+          SL.store.setActiveProgram(program.id);
+          refresh();
+        });
+      }
+
+      var addBtn = root.querySelector("#prog-add-day");
+      if (addBtn) addBtn.addEventListener("click", addDay);
+      var addEmpty = root.querySelector("#prog-add-day-empty");
+      if (addEmpty) addEmpty.addEventListener("click", addDay);
+
+      root.querySelectorAll('[data-action="edit-day"]').forEach(function (el) {
+        el.addEventListener("click", function (e) {
+          e.stopPropagation();
+          state.dayIndex = Number(el.getAttribute("data-idx"));
+          refresh();
+        });
+      });
+
+      root.querySelectorAll('[data-action="delete-day"]').forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (!confirm("Delete this day?")) return;
+          var idx = Number(btn.getAttribute("data-idx"));
+          program.days.splice(idx, 1);
+          SL.store.upsertProgram(program);
+          refresh();
+        });
+      });
+
+      root.querySelector("#prog-save").addEventListener("click", function () {
+        var nameEl = root.querySelector("#prog-name");
+        program.name = nameEl ? nameEl.value.trim() || program.name : program.name;
+        SL.store.upsertProgram(program);
+        state.mode = "list";
+        state.programId = null;
+        refresh();
+      });
     });
   }
 

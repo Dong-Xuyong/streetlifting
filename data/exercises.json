@@ -4,84 +4,84 @@
     "name": "Weighted Pull-Up",
     "category": "competition",
     "muscles": ["lats", "biceps", "forearms", "rear delts"],
-    "cues": "Pronated grip just outside shoulders; full hang to chin clear of bar; control the eccentric."
+    "cues": "Pronated grip just outside shoulders; full hang to chin clear of bar; control the descent."
   },
   {
     "id": "dip",
     "name": "Weighted Dip",
     "category": "competition",
     "muscles": ["chest", "triceps", "front delts"],
-    "cues": "Slight forward lean; elbows track ~45°; shoulders below elbows at bottom; lock out without shrugging."
+    "cues": "Slight forward lean; elbows track about 45°; shoulders below elbows at the bottom; lock out without shrugging."
   },
   {
     "id": "muscleup",
     "name": "Weighted Muscle-Up",
     "category": "competition",
     "muscles": ["lats", "chest", "triceps", "biceps", "core"],
-    "cues": "False grip or deep pull; explode into transition; keep rings/bar close; lock out dips fully."
+    "cues": "False grip or deep pull; drive hard into the transition; keep the bar or rings close; finish with a full dip lockout."
   },
   {
     "id": "squat",
     "name": "Back Squat",
     "category": "competition",
     "muscles": ["quads", "glutes", "hamstrings", "core"],
-    "cues": "Brace hard; hips back and down; crease below parallel; mid-foot pressure; drive knees out."
+    "cues": "Brace before you move; hips back and down; hip crease below parallel; mid-foot pressure; drive knees out."
   },
   {
     "id": "chinup",
     "name": "Chin-Up",
     "category": "accessory",
     "muscles": ["lats", "biceps", "forearms"],
-    "cues": "Supinated grip; pull elbows to ribs; avoid swinging; pause briefly at the top."
+    "cues": "Supinated grip; pull elbows to the ribs; stay quiet in the hips; brief pause at the top."
   },
   {
     "id": "neutral-pullup",
     "name": "Neutral-Grip Pull-Up",
     "category": "accessory",
-    "muscles": ["lats", "biceps", "forearms", "brachialis"],
-    "cues": "Palms facing; easier on elbows/wrists; full hang to chest toward bar."
+    "muscles": ["lats", "biceps", "brachialis", "forearms"],
+    "cues": "Palms facing each other; full hang to chest toward the handles; wrists stacked under the bar."
   },
   {
     "id": "australian-row",
-    "name": "Australian Row / Inverted Row",
+    "name": "Inverted Row",
     "category": "accessory",
     "muscles": ["lats", "rhomboids", "rear delts", "biceps"],
-    "cues": "Body rigid; pull chest to bar; squeeze scapulae; feet farther = harder."
+    "cues": "Body rigid from heels to head; pull chest to the bar; squeeze shoulder blades; step feet farther to load more."
   },
   {
     "id": "barbell-row",
     "name": "Barbell Row",
     "category": "accessory",
     "muscles": ["lats", "rhomboids", "rear delts", "biceps", "erectors"],
-    "cues": "Hinge ~45°; pull to lower ribs; no bounce; keep lumbar neutral."
+    "cues": "Hinge to about 45°; pull the bar to the lower ribs; no bounce; keep the low back neutral."
   },
   {
     "id": "face-pull",
     "name": "Face Pull",
     "category": "accessory",
     "muscles": ["rear delts", "rotator cuff", "rhomboids"],
-    "cues": "Pull to face/ears; externally rotate at finish; light–moderate load, clean form."
+    "cues": "Pull to face or ears; turn the hands out at the finish; keep the load light enough for clean reps."
   },
   {
     "id": "dead-hang",
     "name": "Dead Hang",
     "category": "accessory",
     "muscles": ["forearms", "grip", "lats", "shoulders"],
-    "cues": "Active hang: slight scap depression; relax neck; build time under tension for elbow health."
+    "cues": "Active hang: slight scap depression; neck long and relaxed; hold for time with quiet legs."
   },
   {
     "id": "scapular-pullup",
     "name": "Scapular Pull-Up",
     "category": "accessory",
     "muscles": ["lower traps", "lats", "rhomboids"],
-    "cues": "Arms straight; depress and retract scapulae only; pause at top; no elbow bend."
+    "cues": "Arms stay straight; depress and retract the scapulae only; pause at the top; no elbow bend."
   },
   {
     "id": "ring-dip",
     "name": "Ring Dip",
     "category": "accessory",
     "muscles": ["chest", "triceps", "front delts", "core"],
-    "cues": "Rings turn out at top; control instability; full ROM; stop if shoulders pinch."
+    "cues": "Turn rings out at the top; own the instability; full range each rep; stop if a shoulder pinches."
   },
   {
     "id": "front-squat",
@@ -95,48 +95,48 @@
     "name": "Romanian Deadlift",
     "category": "accessory",
     "muscles": ["hamstrings", "glutes", "erectors"],
-    "cues": "Soft knees; hinge until hamstring stretch; bar close to legs; neutral spine."
+    "cues": "Soft knees; hinge until you feel a hamstring stretch; bar close to the legs; spine neutral."
   },
   {
     "id": "hanging-leg-raise",
     "name": "Hanging Leg Raise",
     "category": "accessory",
     "muscles": ["abs", "hip flexors", "forearms"],
-    "cues": "Posterior pelvic tilt; raise legs without swing; control the lower."
+    "cues": "Tilt the pelvis under; raise the legs without swing; lower under control."
   },
   {
     "id": "band-curl",
     "name": "Band Curl",
     "category": "accessory",
     "muscles": ["biceps", "forearms"],
-    "cues": "Elbows pinned; full stretch to squeeze; use for pump and elbow-friendly volume."
+    "cues": "Elbows pinned at the sides; full stretch to full squeeze; smooth tempo, no heave."
   },
   {
     "id": "band-tricep-extension",
-    "name": "Band Tricep Extension",
+    "name": "Band Triceps Extension",
     "category": "accessory",
     "muscles": ["triceps"],
-    "cues": "Lock elbows in place; extend fully; light bands for high-rep tendon care."
+    "cues": "Pin the elbows; extend fully each rep; use a band light enough for clean lockouts."
   },
   {
     "id": "pike-pushup",
     "name": "Pike Push-Up",
     "category": "accessory",
     "muscles": ["front delts", "triceps", "upper chest"],
-    "cues": "Hips high; head toward floor between hands; deepen ROM before adding load."
+    "cues": "Hips high; head travels toward the floor between the hands; own full depth before adding load."
   },
   {
     "id": "overhead-press",
     "name": "Overhead Press",
     "category": "accessory",
     "muscles": ["front delts", "triceps", "upper chest", "core"],
-    "cues": "Brace glutes/core; bar path close to face; lock out overhead without excessive lean."
+    "cues": "Brace glutes and core; bar path close to the face; lock out overhead without leaning back."
   },
   {
     "id": "pushup",
     "name": "Push-Up",
     "category": "accessory",
     "muscles": ["chest", "triceps", "front delts", "core"],
-    "cues": "Body straight; chest to floor; elbows ~45°; full lockout without sagging hips."
+    "cues": "Body in one line; chest to the floor; elbows about 45°; full lockout without sagging hips."
   }
 ]

@@ -45,52 +45,105 @@
     return v !== null && typeof v === "object" && !Array.isArray(v);
   }
 
+  function filterPlainObjects(arr) {
+    if (!Array.isArray(arr)) return [];
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      if (isPlainObject(arr[i])) out.push(arr[i]);
+    }
+    return out;
+  }
+
+  /** Top-level shape check: salvageable exports pass; junk types fail. */
   function validateStore(data) {
     if (!isPlainObject(data)) return false;
-    if (!isPlainObject(data.settings)) return false;
-    var u = data.settings.unit;
-    if (u !== "kg" && u !== "lb") return false;
-    if (typeof data.settings.restSeconds !== "number" || !isFinite(data.settings.restSeconds)) {
-      return false;
-    }
-    var bw = data.settings.bodyweightKg;
-    if (bw !== null && (typeof bw !== "number" || !isFinite(bw))) return false;
-    if (!Array.isArray(data.customExercises)) return false;
-    if (!Array.isArray(data.programs)) return false;
-    if (!Array.isArray(data.sessions)) return false;
+    if (data.settings != null && !isPlainObject(data.settings)) return false;
+    if (data.customExercises != null && !Array.isArray(data.customExercises)) return false;
+    if (data.programs != null && !Array.isArray(data.programs)) return false;
+    if (data.sessions != null && !Array.isArray(data.sessions)) return false;
     return true;
+  }
+
+  function coerceFiniteNumber(v) {
+    if (typeof v === "number" && isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() !== "") {
+      var n = Number(v);
+      if (isFinite(n)) return n;
+    }
+    return null;
+  }
+
+  function normalizeSettings(rawSettings) {
+    var s = defaults().settings;
+    if (!isPlainObject(rawSettings)) return s;
+    if (rawSettings.unit === "kg" || rawSettings.unit === "lb") {
+      s.unit = rawSettings.unit;
+    }
+    var rest = coerceFiniteNumber(rawSettings.restSeconds);
+    if (rest != null) {
+      if (rest < 0) rest = 0;
+      s.restSeconds = Math.round(rest);
+    }
+    if (rawSettings.bodyweightKg === null) {
+      s.bodyweightKg = null;
+    } else {
+      var bw = coerceFiniteNumber(rawSettings.bodyweightKg);
+      if (bw != null) s.bodyweightKg = bw;
+    }
+    return s;
+  }
+
+  function normalizeSession(sess) {
+    if (!isPlainObject(sess)) return null;
+    if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
+    if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
+    if (!Array.isArray(sess.sets)) sess.sets = [];
+    return sess;
+  }
+
+  function normalizeProgram(p) {
+    if (!isPlainObject(p)) return null;
+    if (!Array.isArray(p.days)) p.days = [];
+    else p.days = filterPlainObjects(p.days);
+    return p;
   }
 
   function normalizeLoaded(raw) {
     var d = defaults();
     if (!isPlainObject(raw)) return d;
 
-    if (isPlainObject(raw.settings)) {
-      if (raw.settings.unit === "kg" || raw.settings.unit === "lb") {
-        d.settings.unit = raw.settings.unit;
-      }
-      if (typeof raw.settings.restSeconds === "number" && isFinite(raw.settings.restSeconds)) {
-        d.settings.restSeconds = raw.settings.restSeconds;
-      }
-      if (
-        raw.settings.bodyweightKg === null ||
-        (typeof raw.settings.bodyweightKg === "number" && isFinite(raw.settings.bodyweightKg))
-      ) {
-        d.settings.bodyweightKg = raw.settings.bodyweightKg;
-      }
-    }
+    d.settings = normalizeSettings(raw.settings);
+    d.customExercises = filterPlainObjects(raw.customExercises);
 
-    if (Array.isArray(raw.customExercises)) d.customExercises = raw.customExercises;
-    if (Array.isArray(raw.programs)) d.programs = raw.programs;
-    if (Array.isArray(raw.sessions)) {
-      d.sessions = raw.sessions.map(function (sess) {
-        if (!isPlainObject(sess)) return sess;
-        if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
-        if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
-        return sess;
-      });
+    var programs = filterPlainObjects(raw.programs);
+    for (var pi = 0; pi < programs.length; pi++) {
+      normalizeProgram(programs[pi]);
     }
+    d.programs = programs;
+
+    var sessions = filterPlainObjects(raw.sessions);
+    for (var i = 0; i < sessions.length; i++) {
+      normalizeSession(sessions[i]);
+    }
+    d.sessions = sessions;
     return d;
+  }
+
+  /** Fill missing settings / array roots in place (stable object identity for views). */
+  function ensureStateShape(s) {
+    if (!isPlainObject(s)) return defaults();
+    if (!isPlainObject(s.settings)) {
+      s.settings = defaults().settings;
+    } else {
+      var fixed = normalizeSettings(s.settings);
+      s.settings.unit = fixed.unit;
+      s.settings.restSeconds = fixed.restSeconds;
+      s.settings.bodyweightKg = fixed.bodyweightKg;
+    }
+    if (!Array.isArray(s.customExercises)) s.customExercises = [];
+    if (!Array.isArray(s.programs)) s.programs = [];
+    if (!Array.isArray(s.sessions)) s.sessions = [];
+    return s;
   }
 
   function loadBuiltins() {
@@ -116,7 +169,9 @@
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        state = normalizeLoaded(JSON.parse(raw));
+        var parsed = JSON.parse(raw);
+        // Salvage partial / corrupt blobs; wipe only if not an object root.
+        state = isPlainObject(parsed) ? normalizeLoaded(parsed) : defaults();
       } else {
         state = defaults();
       }
@@ -128,11 +183,17 @@
 
   function save() {
     if (!state) state = defaults();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    ensureStateShape(state);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      throw new Error("Failed to save (storage full or unavailable)");
+    }
   }
 
   function get() {
     if (!state) load();
+    ensureStateShape(state);
     return state;
   }
 
@@ -145,16 +206,17 @@
   function listExercises() {
     return loadBuiltins().then(function (builtins) {
       var s = get();
-      return builtins.concat(s.customExercises || []);
+      var custom = filterPlainObjects(s.customExercises);
+      return (Array.isArray(builtins) ? builtins : []).concat(custom);
     });
   }
 
   function upsertCustomExercise(ex) {
-    if (!ex || typeof ex !== "object") throw new Error("Invalid exercise");
+    if (!isPlainObject(ex)) throw new Error("Invalid exercise");
     ensureId(ex);
     var s = get();
     var i = s.customExercises.findIndex(function (e) {
-      return e.id === ex.id;
+      return e && e.id === ex.id;
     });
     if (i >= 0) s.customExercises[i] = ex;
     else s.customExercises.push(ex);
@@ -165,33 +227,36 @@
   function deleteCustomExercise(id) {
     var s = get();
     s.customExercises = s.customExercises.filter(function (e) {
-      return e.id !== id;
+      return e && e.id !== id;
     });
     save();
   }
 
   function listPrograms() {
-    return get().programs.slice();
+    return filterPlainObjects(get().programs).slice();
   }
 
   function getActiveProgram() {
     var programs = get().programs;
+    if (!Array.isArray(programs)) return null;
     for (var i = 0; i < programs.length; i++) {
-      if (programs[i].active) return programs[i];
+      var p = programs[i];
+      if (isPlainObject(p) && p.active) return p;
     }
     return null;
   }
 
   function upsertProgram(p) {
-    if (!p || typeof p !== "object") throw new Error("Invalid program");
+    if (!isPlainObject(p)) throw new Error("Invalid program");
     ensureId(p);
     if (!Array.isArray(p.days)) p.days = [];
     for (var d = 0; d < p.days.length; d++) {
-      ensureId(p.days[d]);
+      if (isPlainObject(p.days[d])) ensureId(p.days[d]);
     }
+    p.days = filterPlainObjects(p.days);
     var s = get();
     var i = s.programs.findIndex(function (x) {
-      return x.id === p.id;
+      return x && x.id === p.id;
     });
     if (i >= 0) s.programs[i] = p;
     else s.programs.push(p);
@@ -202,7 +267,7 @@
   function deleteProgram(id) {
     var s = get();
     s.programs = s.programs.filter(function (p) {
-      return p.id !== id;
+      return p && p.id !== id;
     });
     save();
   }
@@ -210,17 +275,19 @@
   function setActiveProgram(id) {
     var s = get();
     for (var i = 0; i < s.programs.length; i++) {
-      s.programs[i].active = s.programs[i].id === id;
+      var p = s.programs[i];
+      if (!isPlainObject(p)) continue;
+      p.active = p.id === id;
     }
     save();
   }
 
   function listSessions() {
-    return get()
-      .sessions.slice()
+    return filterPlainObjects(get().sessions)
+      .slice()
       .sort(function (a, b) {
-        var da = a.dateISO || "";
-        var db = b.dateISO || "";
+        var da = (a && a.dateISO) || "";
+        var db = (b && b.dateISO) || "";
         if (da < db) return 1;
         if (da > db) return -1;
         return 0;
@@ -228,14 +295,14 @@
   }
 
   function upsertSession(sess) {
-    if (!sess || typeof sess !== "object") throw new Error("Invalid session");
+    if (!isPlainObject(sess)) throw new Error("Invalid session");
     ensureId(sess);
     if (!Array.isArray(sess.sets)) sess.sets = [];
     if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
     if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
     var s = get();
     var i = s.sessions.findIndex(function (x) {
-      return x.id === sess.id;
+      return x && x.id === sess.id;
     });
     if (i >= 0) s.sessions[i] = sess;
     else s.sessions.push(sess);
@@ -246,7 +313,7 @@
   function deleteSession(id) {
     var s = get();
     s.sessions = s.sessions.filter(function (x) {
-      return x.id !== id;
+      return x && x.id !== id;
     });
     save();
   }
@@ -256,9 +323,12 @@
   }
 
   function importJson(str) {
+    if (str == null) throw new Error("Invalid JSON");
+    var text = String(str).replace(/^\uFEFF/, "").trim();
+    if (!text) throw new Error("Invalid JSON");
     var parsed;
     try {
-      parsed = JSON.parse(str);
+      parsed = JSON.parse(text);
     } catch (e) {
       throw new Error("Invalid JSON");
     }
@@ -280,9 +350,9 @@
   }
 
   function historyFor(exerciseId) {
-    var sessions = get().sessions.slice().sort(function (a, b) {
-      var da = a.dateISO || "";
-      var db = b.dateISO || "";
+    var sessions = filterPlainObjects(get().sessions).sort(function (a, b) {
+      var da = (a && a.dateISO) || "";
+      var db = (b && b.dateISO) || "";
       if (da < db) return -1;
       if (da > db) return 1;
       return 0;
@@ -290,10 +360,11 @@
     var out = [];
     for (var i = 0; i < sessions.length; i++) {
       var sess = sessions[i];
-      var sets = sess.sets || [];
+      var sets = Array.isArray(sess.sets) ? sess.sets : [];
       var bw = sess.bodyweightKg;
       for (var j = 0; j < sets.length; j++) {
         var set = sets[j];
+        if (!set || typeof set !== "object") continue;
         if (set.exerciseId !== exerciseId) continue;
         if (set.completed === false) continue;
         out.push({
@@ -589,7 +660,7 @@
   function findProgramById(id) {
     var list = get().programs || [];
     for (var i = 0; i < list.length; i++) {
-      if (list[i].id === id) return list[i];
+      if (isPlainObject(list[i]) && list[i].id === id) return list[i];
     }
     return null;
   }

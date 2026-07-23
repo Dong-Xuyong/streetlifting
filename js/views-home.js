@@ -100,11 +100,22 @@
     }
   }
 
+  function goTo(tab) {
+    if (typeof SL.navigate === "function") SL.navigate(tab);
+  }
+
+  function formatBeltNum(num) {
+    if (!num || num === "—") return "—";
+    var s = String(num);
+    return s.charAt(0) === "+" ? s : "+" + s;
+  }
+
   function renderProgramPicker(programs, activeId) {
     if (!programs || programs.length < 2) return "";
     var html =
-      '<div class="card"><h2>Start program</h2>' +
-      '<p class="muted small" style="margin:0 0 10px">Choose which program Home and Start workout use.</p>';
+      '<section class="card" aria-label="Choose program">' +
+      '<h2 class="muted">Program</h2>' +
+      '<p class="muted small" style="margin:0 0 10px">Home and Start workout use the active one.</p>';
     for (var i = 0; i < programs.length; i++) {
       var p = programs[i];
       var isActive = p.id === activeId || (!!p.active && !activeId);
@@ -113,16 +124,21 @@
         (isActive ? "" : " secondary") +
         '" style="margin-bottom:8px" data-action="select-program" data-id="' +
         esc(p.id) +
+        '" aria-pressed="' +
+        (isActive ? "true" : "false") +
         '">' +
         esc(p.name || "Program") +
         (isActive ? " · active" : "") +
         "</button>";
     }
-    html += "</div>";
+    html += "</section>";
     return html;
   }
 
-  /** Primary belt-load artifact for the home hero. */
+  /**
+   * Signature artifact: oversized belt load + lift + one primary CTA.
+   * Markup matches DESIGN.md classes: .load-hero .eyebrow .num .unit .lift .meta .cta
+   */
   function renderLoadHero(opts) {
     var num = opts.num;
     var unit = opts.unit || "kg";
@@ -132,71 +148,107 @@
     var ctaLabel = opts.ctaLabel || "Start workout";
     var ctaAction = opts.ctaAction || "start-workout";
     var empty = !num || num === "—";
+    var displayNum = formatBeltNum(empty ? "—" : num);
+
+    var ariaLoad = empty
+      ? eyebrow + (lift ? ": " + lift : "")
+      : displayNum + " " + unit + (lift ? " " + lift : "");
+    var ctaAria = empty
+      ? ctaLabel
+      : ctaLabel + " — " + displayNum + " " + unit + (lift ? " " + lift : "");
 
     var html =
       '<section class="load-hero' +
       (empty ? " empty" : "") +
-      '" aria-label="Next working load">' +
-      '<div class="eyebrow">' +
+      '" aria-label="' +
+      esc(ariaLoad) +
+      '">' +
+      '<p class="eyebrow" id="home-load-eyebrow">' +
       esc(eyebrow) +
-      "</div>" +
-      '<span class="num">' +
-      esc(empty ? "—" : (String(num).charAt(0) === "+" ? num : "+" + num)) +
-      "</span>" +
-      '<div class="unit">' +
+      "</p>" +
+      '<p class="num" aria-hidden="true">' +
+      esc(displayNum) +
+      "</p>" +
+      '<p class="unit" aria-hidden="true">' +
       esc(unit) +
-      "</div>";
+      "</p>";
 
     if (lift) {
-      html += '<div class="lift">' + esc(lift) + "</div>";
+      html += '<h1 class="lift">' + esc(lift) + "</h1>";
     }
     if (meta) {
-      html += '<div class="meta">' + esc(meta) + "</div>";
+      html += '<p class="session-name meta">' + esc(meta) + "</p>";
     }
 
     html +=
-      '<div class="cta">' +
+      '<div class="cta home-cta">' +
       '<button type="button" class="btn primary block" data-action="' +
       esc(ctaAction) +
+      '" aria-label="' +
+      esc(ctaAria) +
       '">' +
       esc(ctaLabel) +
       "</button></div></section>";
     return html;
   }
 
+  function renderSecondaryHeading(text) {
+    return '<h2 class="muted">' + esc(text) + "</h2>";
+  }
+
   function renderExerciseRows(rows) {
     if (!rows || !rows.length) {
-      return '<p class="muted">No exercises planned.</p>';
+      return '<p class="muted small">No exercises planned.</p>';
     }
-    var html = "";
+    var html = '<div class="stack stack-sm" role="list">';
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       html +=
-        '<div class="pr-row">' +
+        '<div class="pr-row" role="listitem">' +
         "<div><div class=\"name\">" +
         esc(r.name) +
         '</div><div class="sub">' +
         esc(r.sub) +
         "</div></div></div>";
     }
+    html += "</div>";
     return html;
   }
 
+  /** Quieter day / session plan under the hero. */
   function renderDayCard(title, programName, rows, editLabel) {
     return (
-      '<div class="card">' +
-      "<h2>" +
+      '<hr class="weld" aria-hidden="true" />' +
+      '<section class="card" aria-label="' +
       esc(title) +
-      "</h2>" +
-      '<div class="spread" style="margin-bottom:12px">' +
-      "<div><strong>" +
+      '">' +
+      renderSecondaryHeading(title) +
+      '<div class="spread" style="margin-bottom:10px">' +
+      '<div><span class="muted small">' +
       esc(programName) +
-      '</strong><div class="muted small">Active</div></div>' +
-      '<button type="button" class="btn secondary sm" data-action="goto-program">' +
+      "</span></div>" +
+      '<button type="button" class="btn secondary sm" data-action="goto-program" aria-label="' +
+      esc((editLabel || "View") + " program") +
+      '">' +
       esc(editLabel || "View") +
       "</button></div>" +
       renderExerciseRows(rows) +
-      "</div>"
+      "</section>"
+    );
+  }
+
+  function renderEmptyHint(title, hint) {
+    return (
+      '<hr class="weld" aria-hidden="true" />' +
+      '<section class="empty-state" aria-label="' +
+      esc(title) +
+      '">' +
+      '<div class="title">' +
+      esc(title) +
+      "</div>" +
+      '<p class="hint">' +
+      esc(hint) +
+      "</p></section>"
     );
   }
 
@@ -205,16 +257,16 @@
       renderLoadHero({
         num: null,
         unit: "kg",
-        eyebrow: "No program",
-        lift: "Create a program",
-        meta: "Pick a day, then start from here",
+        eyebrow: "Belt load",
+        lift: "No program yet",
+        meta: "Add days and loads — your next weight shows here",
         ctaLabel: "Create a program",
         ctaAction: "goto-program",
       }) +
-      '<div class="card">' +
-      "<h2>Program</h2>" +
-      '<p class="muted">No active program yet. Set one up, then your next belt load shows here.</p>' +
-      "</div>"
+      renderEmptyHint(
+        "Set up your program",
+        "Pick lifts, sets, and starting loads. Home opens on the next belt weight."
+      )
     );
   }
 
@@ -222,11 +274,14 @@
     var bw = settings && settings.bodyweightKg;
     if (bw == null || bw === "" || isNaN(Number(bw))) {
       return (
-        '<p class="muted small" style="margin:4px 0 14px">Bodyweight not set — add it in Settings.</p>'
+        '<p class="muted small" style="margin:8px 0 4px;text-align:center">' +
+        '<button type="button" class="btn secondary sm" data-action="goto-settings" aria-label="Set bodyweight in Settings">' +
+        "Set bodyweight" +
+        "</button></p>"
       );
     }
     return (
-      '<p class="muted small" style="margin:4px 0 14px">BW ' +
+      '<p class="muted small" style="margin:8px 0 4px;text-align:center">BW ' +
       esc(fmtWeight(bw, unit)) +
       "</p>"
     );
@@ -240,10 +295,14 @@
           unit: unit,
           eyebrow: program.name || "Squat cycle",
           lift: "Schedule unavailable",
+          meta: "Open Programs to check the cycle",
           ctaLabel: "Open Programs",
           ctaAction: "goto-program",
         }) +
-        renderDayCard("Program", program.name || "Squat cycle", [], "View")
+        renderEmptyHint(
+          "No session queued",
+          "The squat schedule could not be resolved for this program."
+        )
       );
     }
 
@@ -270,8 +329,9 @@
         eyebrow: "Next load",
         lift: "Squat",
         meta: (session.name || "Session") + (session.dateISO ? " · " + session.dateISO : ""),
+        ctaLabel: "Start workout",
       }) +
-      renderDayCard("Session", program.name || "Squat cycle", rows, "View")
+      renderDayCard("Session plan", program.name || "Squat cycle", rows, "View")
     );
   }
 
@@ -284,11 +344,15 @@
           num: null,
           unit: unit,
           eyebrow: program.name || "Pull-up wave",
-          lift: "Wave session unavailable",
+          lift: "Wave unavailable",
+          meta: "Open Programs to check the wave",
           ctaLabel: "Open Programs",
           ctaAction: "goto-program",
         }) +
-        renderDayCard("Program", program.name || "Pull-up wave", [], "View")
+        renderEmptyHint(
+          "No wave session",
+          "Intensive and volume days could not be loaded."
+        )
       );
     }
 
@@ -305,16 +369,22 @@
     }
 
     var dayPick =
-      '<div class="card" style="margin-top:10px"><h2 style="margin:0 0 8px">Day type</h2>' +
-      '<p class="muted small" style="margin:0 0 10px">Choose Intensive or Volume before starting.</p>' +
-      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<hr class="weld" aria-hidden="true" />' +
+      '<section class="card" aria-label="Day type">' +
+      renderSecondaryHeading("Day type") +
+      '<p class="muted small" style="margin:0 0 10px">Choose Intensive or Volume, then start.</p>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:4px" role="group" aria-label="Wave day">' +
       '<button type="button" class="btn' +
       (selected === "intensive" ? "" : " secondary") +
-      '" data-action="pick-wave-day" data-wave="intensive">Intensive</button>' +
+      '" data-action="pick-wave-day" data-wave="intensive" aria-pressed="' +
+      (selected === "intensive" ? "true" : "false") +
+      '">Intensive</button>' +
       '<button type="button" class="btn' +
       (selected === "volume" ? "" : " secondary") +
-      '" data-action="pick-wave-day" data-wave="volume">Volume</button>' +
-      "</div></div>";
+      '" data-action="pick-wave-day" data-wave="volume" aria-pressed="' +
+      (selected === "volume" ? "true" : "false") +
+      '">Volume</button>' +
+      "</div></section>";
 
     return (
       renderLoadHero({
@@ -323,10 +393,11 @@
         eyebrow: "Next load",
         lift: "Pull-up",
         meta: session.name || "Wave session",
+        ctaLabel: "Start workout",
         ctaAction: "start-wave",
       }) +
       dayPick +
-      renderDayCard("Session", program.name || "Pull-up wave", rows, "View")
+      renderDayCard("Session plan", program.name || "Pull-up wave", rows, "View")
     );
   }
 
@@ -340,10 +411,14 @@
           unit: unit,
           eyebrow: program.name || "Program",
           lift: "No days yet",
+          meta: "Add a day with lifts and starting loads",
           ctaLabel: "Edit program",
           ctaAction: "goto-program",
         }) +
-        renderDayCard("Program", program.name || "Untitled", [], "Edit")
+        renderEmptyHint(
+          "Add a training day",
+          "Once a day has exercises and loads, the next belt weight appears above."
+        )
       );
     }
 
@@ -376,20 +451,35 @@
       });
     }
 
+    var heroOpts = {
+      num: num,
+      unit: unit,
+      eyebrow: "Next load",
+      lift: firstName,
+      meta: (day.name || "Day") + " · " + (program.name || "Program"),
+      ctaLabel: "Start workout",
+    };
+    if (num == null) {
+      heroOpts.eyebrow = "Next lift";
+      heroOpts.meta =
+        (day.name || "Day") +
+        " · " +
+        (program.name || "Program") +
+        " — set a starting load in the program";
+    }
+
     return (
-      renderLoadHero({
-        num: num,
-        unit: unit,
-        eyebrow: "Next load",
-        lift: firstName,
-        meta: (day.name || "Day") + " · " + (program.name || "Program"),
-      }) +
+      renderLoadHero(heroOpts) +
       renderDayCard("Today / next day", program.name || "Untitled", rows, "Edit")
     );
   }
 
+  /** Secondary PR strip — quieter than the load hero. */
   function renderPrs(unit) {
-    var html = '<div class="card"><h2>Quick PRs</h2>';
+    var html =
+      '<hr class="weld" aria-hidden="true" />' +
+      '<section class="card" aria-label="Competition PRs">' +
+      renderSecondaryHeading("Quick PRs");
     var any = false;
     for (var i = 0; i < PR_LIFTS.length; i++) {
       var lift = PR_LIFTS[i];
@@ -423,7 +513,7 @@
       html +=
         '<p class="muted small" style="margin-top:8px">Log sessions to track competition PRs.</p>';
     }
-    html += "</div>";
+    html += "</section>";
     return html;
   }
 
@@ -455,7 +545,9 @@
         if (!btn) return;
         var action = btn.getAttribute("data-action");
         if (action === "goto-program") {
-          SL.navigate("program");
+          goTo("program");
+        } else if (action === "goto-settings") {
+          goTo("settings");
         } else if (action === "start-workout") {
           startWorkout({ programId: program && program.id });
         } else if (action === "start-wave") {
@@ -496,8 +588,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: "Loading",
-          lift: "Squat schedule…",
+          eyebrow: "Next load",
+          lift: "Loading squat…",
+          meta: "Fetching schedule",
           ctaLabel: "Start workout",
         })
       );
@@ -516,9 +609,14 @@
               unit: unit,
               eyebrow: "Squat cycle",
               lift: "Could not load schedule",
+              meta: "Check the program or try again",
               ctaLabel: "Open Programs",
               ctaAction: "goto-program",
-            })
+            }) +
+              renderEmptyHint(
+                "Schedule failed",
+                "Open Programs to fix the squat cycle, then return here."
+              )
           );
         });
       return;
@@ -529,8 +627,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: "Loading",
-          lift: "Pull-up wave…",
+          eyebrow: "Next load",
+          lift: "Loading wave…",
+          meta: "Fetching intensive / volume",
           ctaLabel: "Start workout",
         })
       );
@@ -569,9 +668,14 @@
               unit: unit,
               eyebrow: "Pull-up wave",
               lift: "Could not load wave",
+              meta: "Check the program or try again",
               ctaLabel: "Open Programs",
               ctaAction: "goto-program",
-            })
+            }) +
+              renderEmptyHint(
+                "Wave failed",
+                "Open Programs to fix the pull-up wave, then return here."
+              )
           );
         });
       return;

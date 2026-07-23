@@ -16,6 +16,9 @@
   /** @type {string|null} YYYY-MM-DD */
   var calSelectedISO = null;
   var overlayEl = null;
+  /** @type {number|null} after complete-set, scroll toward next open set */
+  var pendingScrollSetIdx = null;
+  var doneHideTimer = null;
 
   function ensureNotes(obj) {
     if (!obj || typeof obj !== "object") return obj;
@@ -501,52 +504,87 @@
     overlayEl.id = "timer-overlay";
     overlayEl.className = "timer-overlay hidden";
     overlayEl.setAttribute("role", "dialog");
+    overlayEl.setAttribute("aria-modal", "true");
     overlayEl.setAttribute("aria-label", "Rest timer");
     overlayEl.innerHTML =
-      '<div class="timer-label">Rest</div>' +
-      '<div class="timer-display" data-timer-display>0:00</div>' +
+      '<div class="timer-label" data-timer-label>Rest</div>' +
+      '<div class="timer-display" data-timer-display aria-live="polite">0:00</div>' +
       '<div class="timer-actions">' +
+      '<button type="button" class="btn secondary" data-timer-add>+30s</button>' +
       '<button type="button" class="btn btn-primary" data-timer-skip>Skip rest</button>' +
       "</div>";
     document.body.appendChild(overlayEl);
     overlayEl.addEventListener("click", function (e) {
       var t = e.target;
-      if (t && t.getAttribute && t.getAttribute("data-timer-skip") != null) {
+      if (!t || !t.closest) return;
+      if (t.closest("[data-timer-skip]")) {
         hideOverlay();
+        return;
+      }
+      if (t.closest("[data-timer-add]")) {
+        var addSec = 30;
+        var cur = SL.timer && typeof SL.timer.remaining === "function" ? SL.timer.remaining() : 0;
+        if (cur < 0) cur = 0;
+        showRestTimer(cur + addSec);
       }
     });
     return overlayEl;
   }
 
+  function setOverlayDone(isDone) {
+    var el = ensureOverlay();
+    var display = el.querySelector("[data-timer-display]");
+    var label = el.querySelector("[data-timer-label]");
+    var skip = el.querySelector("[data-timer-skip]");
+    if (display) {
+      if (isDone) display.classList.add("done");
+      else display.classList.remove("done");
+    }
+    if (label) label.textContent = isDone ? "Rest done" : "Rest";
+    if (skip) skip.textContent = isDone ? "Continue" : "Skip rest";
+  }
+
   function hideOverlay() {
+    if (doneHideTimer) {
+      clearTimeout(doneHideTimer);
+      doneHideTimer = null;
+    }
     if (SL.timer) SL.timer.stop();
     var el = ensureOverlay();
     el.classList.add("hidden");
+    setOverlayDone(false);
     var display = el.querySelector("[data-timer-display]");
-    if (display) display.classList.remove("done");
+    if (display) display.textContent = "0:00";
   }
 
   function showRestTimer(seconds) {
+    if (doneHideTimer) {
+      clearTimeout(doneHideTimer);
+      doneHideTimer = null;
+    }
     var el = ensureOverlay();
     var display = el.querySelector("[data-timer-display]");
     el.classList.remove("hidden");
-    if (display) display.classList.remove("done");
+    setOverlayDone(false);
 
     function tick(rem) {
       if (display) {
         display.textContent = formatMmSs(rem);
-        if (rem <= 0) display.classList.add("done");
+        if (rem <= 0) setOverlayDone(true);
+        else setOverlayDone(false);
       }
     }
 
     SL.timer.start(seconds, tick, function () {
       if (display) {
         display.textContent = "0:00";
-        display.classList.add("done");
+        setOverlayDone(true);
       }
-      setTimeout(function () {
+      // Hold long enough for CSS .done pulse (2 × 0.55s) to read on the floor
+      doneHideTimer = setTimeout(function () {
+        doneHideTimer = null;
         hideOverlay();
-      }, 800);
+      }, 1400);
     });
   }
 
@@ -558,9 +596,8 @@
 
     ensureNotes(draft);
     var seenNote = {};
-    var html =
-      '<div class="set-head" style="grid-template-columns:1fr">' +
-      "<span>Sets</span></div>";
+    var names = nameMap(exercises);
+    var html = '<div class="stack">';
 
     for (var i = 0; i < sets.length; i++) {
       var set = sets[i];
@@ -580,45 +617,80 @@
         set.exerciseId && draft.sectionNotes[set.exerciseId]
           ? draft.sectionNotes[set.exerciseId]
           : "";
+      var hasSectionNote = !!(sectionVal && String(sectionVal).trim());
+      var noteOpen = hasSectionNote;
+      var exLabel = names[set.exerciseId] || set.exerciseId || "exercise";
+
       html +=
         '<div class="exercise-block" data-set-idx="' +
         i +
-        '">' +
+        '"' +
+        (set.completed ? ' data-completed="1"' : "") +
+        ">" +
         '<div class="ex-head">' +
-        '<select data-field="exerciseId" aria-label="Exercise">' +
+        '<select data-field="exerciseId" aria-label="Exercise for set ' +
+        (i + 1) +
+        '">' +
         exerciseOptionsHtml(exercises, set.exerciseId) +
         "</select>" +
-        '<button type="button" class="del-set" data-action="remove-set" aria-label="Remove set">&times;</button>' +
+        '<button type="button" class="icon-btn del-set" data-action="remove-set" aria-label="Remove set ' +
+        (i + 1) +
+        '">&times;</button>' +
         "</div>" +
         hint +
-        '<div class="set-head"><span>#</span><span>Load (' +
+        '<div class="row wrap" style="gap:10px;align-items:flex-end">' +
+        '<label class="field grow" style="margin:0;min-width:40%">' +
+        '<span class="lbl">Load (' +
         esc(unit) +
-        ")</span><span>Reps</span><span>RPE</span><span></span></div>" +
-        '<div class="set-row">' +
-        '<span class="set-num">' +
-        (i + 1) +
-        "</span>" +
-        '<input type="number" class="load-num" inputmode="decimal" step="any" data-field="load" placeholder="0" value="' +
+        ")</span>" +
+        '<input type="number" class="load-num" inputmode="decimal" step="any" enterkeyhint="next" data-field="load" placeholder="0" value="' +
         esc(kgToDisplay(set.loadKg, unit)) +
-        '" aria-label="Load" />' +
-        '<input type="number" inputmode="numeric" step="1" data-field="reps" placeholder="0" value="' +
+        '" aria-label="Load in ' +
+        esc(unit) +
+        '" /></label>' +
+        '<label class="field grow" style="margin:0;min-width:28%">' +
+        '<span class="lbl">Reps</span>' +
+        '<input type="number" inputmode="numeric" step="1" enterkeyhint="done" data-field="reps" placeholder="0" value="' +
         esc(set.reps != null ? set.reps : "") +
-        '" aria-label="Reps" />' +
+        '" aria-label="Reps" /></label>' +
+        '<label class="field" style="margin:0;width:72px;flex:0 0 72px">' +
+        '<span class="lbl">RPE</span>' +
         '<input type="number" inputmode="decimal" step="0.5" min="1" max="10" data-field="rpe" placeholder="—" value="' +
         esc(set.rpe != null ? set.rpe : "") +
-        '" aria-label="RPE" />' +
-        (set.completed
-          ? '<span class="badge green" title="Completed">OK</span>'
-          : '<button type="button" class="btn sm btn-primary" data-action="complete-set" aria-label="Complete set">Done</button>') +
+        '" aria-label="RPE" /></label>' +
         "</div>" +
+        (set.completed
+          ? '<div class="row spread" style="margin-top:10px">' +
+            '<span class="muted small">Set ' +
+            (i + 1) +
+            "</span>" +
+            '<span class="badge green">Completed</span></div>'
+          : '<button type="button" class="btn btn-primary block" data-action="complete-set" style="margin-top:10px" aria-label="Complete set ' +
+            (i + 1) +
+            '">Complete set</button>') +
         (showSectionNote
-          ? '<label class="field section-note"><span class="lbl">Your note</span>' +
-            '<textarea data-field="section-note" rows="2" placeholder="How did this section feel?">' +
+          ? '<div class="section-note" data-section-note-wrap="' +
+            esc(set.exerciseId) +
+            '">' +
+            '<button type="button" class="btn block" data-action="toggle-section-note" aria-expanded="' +
+            (noteOpen ? "true" : "false") +
+            '">' +
+            (noteOpen ? "Hide note · " : "Add note · ") +
+            esc(exLabel) +
+            "</button>" +
+            '<label class="field' +
+            (noteOpen ? "" : " hidden") +
+            '" data-section-note-body style="margin-top:8px">' +
+            '<span class="lbl">How did ' +
+            esc(exLabel) +
+            " feel?</span>" +
+            '<textarea data-field="section-note" rows="2" placeholder="Optional — form, pumps, sticking point">' +
             esc(sectionVal) +
-            "</textarea></label>"
+            "</textarea></label></div>"
           : "") +
         "</div>";
     }
+    html += "</div>";
     return html;
   }
 
@@ -681,6 +753,40 @@
     }
   }
 
+  function scrollToNextOpenSet(root, fromIdx) {
+    if (!root || !draft) return;
+    var sets = draft.sets || [];
+    var next = -1;
+    for (var i = fromIdx + 1; i < sets.length; i++) {
+      if (!sets[i].completed) {
+        next = i;
+        break;
+      }
+    }
+    if (next < 0) {
+      for (var j = 0; j <= fromIdx; j++) {
+        if (!sets[j].completed) {
+          next = j;
+          break;
+        }
+      }
+    }
+    if (next < 0) return;
+    var block = root.querySelector('[data-set-idx="' + next + '"]');
+    if (!block) return;
+    if (typeof block.scrollIntoView === "function") {
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    var reps = block.querySelector('[data-field="reps"]');
+    if (reps && typeof reps.focus === "function") {
+      try {
+        reps.focus({ preventScroll: true });
+      } catch (err) {
+        reps.focus();
+      }
+    }
+  }
+
   function onLogClick(e) {
     var root = e.currentTarget;
     if (!draft || root.getAttribute("data-sl-view") !== "log") return;
@@ -715,6 +821,12 @@
     }
 
     if (action === "new-session") {
+      if (draft.sets && draft.sets.length) {
+        if (!confirm("Start a new session? Unsaved sets on this screen will be cleared.")) {
+          return;
+        }
+      }
+      hideOverlay();
       draft = emptyDraft();
       paintLog(root);
       return;
@@ -759,12 +871,33 @@
       return;
     }
 
+    if (action === "toggle-section-note") {
+      var wrap = btn.closest("[data-section-note-wrap]");
+      if (!wrap) return;
+      var body = wrap.querySelector("[data-section-note-body]");
+      if (!body) return;
+      var open = body.classList.contains("hidden");
+      if (open) body.classList.remove("hidden");
+      else body.classList.add("hidden");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      var label = btn.textContent || "";
+      if (open) {
+        btn.textContent = label.replace(/^Add note/, "Hide note");
+        var ta = body.querySelector("textarea");
+        if (ta && typeof ta.focus === "function") ta.focus();
+      } else {
+        btn.textContent = label.replace(/^Hide note/, "Add note");
+      }
+      return;
+    }
+
     var block = btn.closest("[data-set-idx]");
     if (!block) return;
     var idx = Number(block.getAttribute("data-set-idx"));
     if (!draft.sets[idx]) return;
 
     if (action === "remove-set") {
+      if (!confirm("Remove this set?")) return;
       draft.sets.splice(idx, 1);
       paintLog(root);
       return;
@@ -779,12 +912,16 @@
       }
       if (set.reps == null || set.reps === "") {
         alert("Enter reps before completing the set.");
+        var repsEl = block.querySelector('[data-field="reps"]');
+        if (repsEl && typeof repsEl.focus === "function") repsEl.focus();
         return;
       }
       set.completed = true;
-      paintLog(root);
       var rest = settings().restSeconds;
+      // Start rest immediately — do not wait on async paint
       if (rest > 0 && SL.timer) showRestTimer(rest);
+      pendingScrollSetIdx = idx;
+      paintLog(root);
     }
   }
 
@@ -939,12 +1076,12 @@
           '<p class="muted small">Linked to <strong>' +
           esc(draft.dayName || "pull-up wave session") +
           "</strong></p>" +
-          '<div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0">' +
-          '<button type="button" class="btn sm' +
-          (draft.waveDay === "intensive" ? "" : " secondary") +
+          '<div class="row wrap" style="gap:8px;margin:8px 0">' +
+          '<button type="button" class="btn grow' +
+          (draft.waveDay === "intensive" ? " btn-primary" : " secondary") +
           '" data-action="pick-wave-day" data-wave="intensive">Intensive</button>' +
-          '<button type="button" class="btn sm' +
-          (draft.waveDay === "volume" ? "" : " secondary") +
+          '<button type="button" class="btn grow' +
+          (draft.waveDay === "volume" ? " btn-primary" : " secondary") +
           '" data-action="pick-wave-day" data-wave="volume">Volume</button>' +
           "</div>";
       } else if (program && day) {
@@ -1006,6 +1143,11 @@
 
       root.setAttribute("data-sl-view", "log");
       bindLog(root);
+      if (pendingScrollSetIdx != null) {
+        var fromIdx = pendingScrollSetIdx;
+        pendingScrollSetIdx = null;
+        scrollToNextOpenSet(root, fromIdx);
+      }
     });
   }
 

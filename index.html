@@ -3,9 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#0d1117" />
+  <meta name="description" content="Weighted calisthenics tracker — programs, session log, rest timer, and plate loads. Chalk on steel." />
+  <meta name="application-name" content="Streetlifting" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Streetlifting" />
+  <meta name="format-detection" content="telephone=no" />
   <title>Streetlifting</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,25 +20,55 @@
   <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
+  <a class="skip-link" href="#view-root">Skip to content</a>
+
   <div id="app">
-    <header id="topbar">
-      <button id="back-btn" class="icon-btn hidden" type="button" aria-label="Back">&#8592;</button>
-      <h1 id="topbar-title">Streetlifting</h1>
-      <span id="topbar-meta"></span>
+    <header id="topbar" aria-labelledby="topbar-title">
+      <button
+        id="back-btn"
+        class="icon-btn hidden"
+        type="button"
+        aria-label="Back to home"
+      >&#8592;</button>
+      <div id="topbar-brand">
+        <p id="app-wordmark">Streetlifting</p>
+        <h1 id="topbar-title">Streetlifting</h1>
+      </div>
+      <span id="topbar-meta" aria-live="polite"></span>
     </header>
 
-    <main id="view-root"></main>
+    <main id="view-root" tabindex="-1" aria-labelledby="topbar-title"></main>
 
-    <nav id="tabbar" aria-label="Main">
-      <button type="button" data-tab="home" class="tab active"><span class="tab-icon" aria-hidden="true">&#8962;</span>Home</button>
-      <button type="button" data-tab="log" class="tab"><span class="tab-icon" aria-hidden="true">&#43;</span>Log</button>
-      <button type="button" data-tab="history" class="tab"><span class="tab-icon" aria-hidden="true">&#9776;</span>Hist</button>
-      <button type="button" data-tab="analytics" class="tab"><span class="tab-icon" aria-hidden="true">&#9636;</span>Stats</button>
-      <button type="button" data-tab="program" class="tab"><span class="tab-icon" aria-hidden="true">&#9635;</span>Prog</button>
-      <button type="button" data-tab="exercises" class="tab"><span class="tab-icon" aria-hidden="true">&#9733;</span>Ex</button>
-      <button type="button" data-tab="settings" class="tab"><span class="tab-icon" aria-hidden="true">&#9881;</span>Set</button>
+    <nav id="tabbar" aria-label="Primary">
+      <button type="button" data-tab="home" class="tab active" aria-label="Home" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#8962;</span><span class="tab-label">Home</span>
+      </button>
+      <button type="button" data-tab="log" class="tab" aria-label="Log session" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#43;</span><span class="tab-label">Log</span>
+      </button>
+      <button type="button" data-tab="history" class="tab" aria-label="History" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#9776;</span><span class="tab-label">Hist</span>
+      </button>
+      <button type="button" data-tab="analytics" class="tab" aria-label="Analytics" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#9636;</span><span class="tab-label">Stats</span>
+      </button>
+      <button type="button" data-tab="program" class="tab" aria-label="Program" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#9635;</span><span class="tab-label">Prog</span>
+      </button>
+      <button type="button" data-tab="exercises" class="tab" aria-label="Exercises" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#9733;</span><span class="tab-label">Ex</span>
+      </button>
+      <button type="button" data-tab="settings" class="tab" aria-label="Settings" aria-controls="view-root">
+        <span class="tab-icon" aria-hidden="true">&#9881;</span><span class="tab-label">Set</span>
+      </button>
     </nav>
   </div>
+
+  <noscript>
+    <p style="margin:24px 16px;color:#e6edf3;font:500 1rem/1.4 'DM Sans',system-ui,sans-serif;max-width:640px">
+      Streetlifting needs JavaScript to run. Enable it, then reload.
+    </p>
+  </noscript>
 
   <script src="js/store.js"></script>
   <script src="js/timer.js"></script>

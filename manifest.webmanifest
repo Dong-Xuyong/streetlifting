@@ -1,10 +1,17 @@
 {
+  "id": "./",
   "name": "Streetlifting",
   "short_name": "Streetlift",
-  "description": "Weighted calisthenics tracker — chalk on steel",
+  "description": "Weighted calisthenics tracker for the rack — programs, session logging, rest timer, analytics, and plate calculator. Chalk on steel.",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "orientation": "portrait-primary",
   "background_color": "#0d1117",
   "theme_color": "#0d1117",
-  "lang": "en"
+  "categories": ["fitness", "health", "sports"],
+  "prefer_related_applications": false
 }

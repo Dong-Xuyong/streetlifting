@@ -51,10 +51,50 @@
     return fmt(fromKg(kg), 1) + " " + unitLabel();
   }
 
-  /** Inline SVG line chart. points: number[] (y values, chronological). */
-  function svgLineChart(points, w, h) {
+  function fmtDateShort(iso) {
+    if (!iso || String(iso).length < 10) return String(iso || "");
+    return String(iso).slice(5);
+  }
+
+  function deltaLabel(fromKgVal, toKgVal) {
+    var d = toKgVal - fromKgVal;
+    var sign = d > 0 ? "+" : "";
+    return sign + fmt(fromKg(d), 1) + " " + unitLabel();
+  }
+
+  function gotoLogCta(label) {
+    return (
+      '<div class="actions">' +
+      '<button type="button" class="btn primary block" data-action="goto-log">' +
+      esc(label || "Log a session") +
+      "</button></div>"
+    );
+  }
+
+  function sectionEmpty(title, hint) {
+    return (
+      '<div class="empty-note">' +
+      (title ? '<p class="title">' + esc(title) + "</p>" : "") +
+      "<p>" +
+      esc(hint) +
+      "</p>" +
+      gotoLogCta("Log a session") +
+      "</div>"
+    );
+  }
+
+  /**
+   * Inline SVG line chart.
+   * points: number[] (y values, chronological)
+   * opts: { ariaLabel, xLabels: [first, last], yDigits }
+   */
+  function svgLineChart(points, w, h, opts) {
     w = w || 320;
-    h = h || 140;
+    h = h || 148;
+    opts = opts || {};
+    var yDigits = opts.yDigits == null ? 0 : opts.yDigits;
+    var aria = opts.ariaLabel || "Trend chart";
+
     if (!points || !points.length) {
       return (
         '<svg viewBox="0 0 ' +
@@ -70,15 +110,15 @@
         w / 2 +
         '" y="' +
         h / 2 +
-        '" text-anchor="middle" class="axis-label">No data</text>' +
+        '" text-anchor="middle" class="axis-label">No data yet</text>' +
         "</svg>"
       );
     }
 
-    var padL = 36;
-    var padR = 10;
-    var padT = 12;
-    var padB = 22;
+    var padL = 40;
+    var padR = 12;
+    var padT = 14;
+    var padB = opts.xLabels ? 28 : 18;
     var plotW = w - padL - padR;
     var plotH = h - padT - padB;
 
@@ -93,6 +133,7 @@
       max = max + 1;
     }
     var range = max - min;
+    var mid = (min + max) / 2;
 
     function xAt(idx) {
       if (points.length === 1) return padL + plotW / 2;
@@ -107,7 +148,32 @@
       coords.push(xAt(j).toFixed(1) + "," + yAt(points[j]).toFixed(1));
     }
 
-    var mid = (min + max) / 2;
+    var lastIdx = points.length - 1;
+    var yMax = yAt(max);
+    var yMid = yAt(mid);
+    var yMin = yAt(min);
+    var x0 = xAt(0);
+    var xLast = xAt(lastIdx);
+    var yBase = padT + plotH;
+
+    // Soft fill under the line for contrast on dark iron bg
+    var areaD =
+      "M" +
+      x0.toFixed(1) +
+      "," +
+      yBase.toFixed(1) +
+      " L" +
+      coords
+        .map(function (c) {
+          return c;
+        })
+        .join(" L") +
+      " L" +
+      xLast.toFixed(1) +
+      "," +
+      yBase.toFixed(1) +
+      " Z";
+
     var svg =
       '<svg viewBox="0 0 ' +
       w +
@@ -117,7 +183,20 @@
       w +
       '" height="' +
       h +
-      '" role="img">' +
+      '" role="img" aria-label="' +
+      esc(aria) +
+      '">' +
+      // Mid guide
+      '<line x1="' +
+      padL +
+      '" y1="' +
+      yMid.toFixed(1) +
+      '" x2="' +
+      (padL + plotW) +
+      '" y2="' +
+      yMid.toFixed(1) +
+      '" stroke="var(--border, #2a3342)" stroke-width="1" stroke-dasharray="3 4"/>' +
+      // Axes
       '<line x1="' +
       padL +
       '" y1="' +
@@ -125,43 +204,75 @@
       '" x2="' +
       padL +
       '" y2="' +
-      (padT + plotH) +
+      yBase +
       '" stroke="var(--border, #2a3342)" stroke-width="1"/>' +
       '<line x1="' +
       padL +
       '" y1="' +
-      (padT + plotH) +
+      yBase +
       '" x2="' +
       (padL + plotW) +
       '" y2="' +
-      (padT + plotH) +
+      yBase +
       '" stroke="var(--border, #2a3342)" stroke-width="1"/>' +
-      '<text x="4" y="' +
-      (padT + 4) +
+      // Y labels (display units)
+      '<text x="2" y="' +
+      (yMax + 3).toFixed(1) +
       '" class="axis-label">' +
-      esc(fmt(fromKg(max), 0)) +
+      esc(fmt(fromKg(max), yDigits)) +
       "</text>" +
-      '<text x="4" y="' +
-      (padT + plotH / 2 + 3) +
+      '<text x="2" y="' +
+      (yMid + 3).toFixed(1) +
       '" class="axis-label">' +
-      esc(fmt(fromKg(mid), 0)) +
+      esc(fmt(fromKg(mid), yDigits)) +
       "</text>" +
-      '<text x="4" y="' +
-      (padT + plotH) +
+      '<text x="2" y="' +
+      (yMin + 3).toFixed(1) +
       '" class="axis-label">' +
-      esc(fmt(fromKg(min), 0)) +
+      esc(fmt(fromKg(min), yDigits)) +
       "</text>" +
-      '<polyline fill="none" stroke="var(--accent, #77b7ff)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' +
+      '<path d="' +
+      areaD +
+      '" fill="rgba(119,183,255,0.12)"/>' +
+      '<polyline fill="none" stroke="var(--accent, #77b7ff)" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round" points="' +
       coords.join(" ") +
       '"/>';
 
     for (var k = 0; k < points.length; k++) {
+      var isLast = k === lastIdx;
       svg +=
         '<circle cx="' +
         xAt(k).toFixed(1) +
         '" cy="' +
         yAt(points[k]).toFixed(1) +
-        '" r="3" fill="var(--accent, #77b7ff)"/>';
+        '" r="' +
+        (isLast ? "4.5" : "2.75") +
+        '" fill="' +
+        (isLast ? "var(--green, #3fb96b)" : "var(--accent, #77b7ff)") +
+        '"/>';
+    }
+
+    if (opts.xLabels && opts.xLabels.length) {
+      var firstLab = opts.xLabels[0] || "";
+      var lastLab = opts.xLabels[opts.xLabels.length - 1] || "";
+      svg +=
+        '<text x="' +
+        padL +
+        '" y="' +
+        (h - 6) +
+        '" class="axis-label">' +
+        esc(firstLab) +
+        "</text>";
+      if (points.length > 1 && lastLab) {
+        svg +=
+          '<text x="' +
+          (padL + plotW) +
+          '" y="' +
+          (h - 6) +
+          '" text-anchor="end" class="axis-label">' +
+          esc(lastLab) +
+          "</text>";
+      }
     }
 
     svg += "</svg>";
@@ -246,10 +357,17 @@
     return sum;
   }
 
+  function missingCompLifts() {
+    var missing = [];
+    COMP_LIFTS.forEach(function (lift) {
+      if (!store().bestSet(lift.id)) missing.push(lift.label);
+    });
+    return missing;
+  }
+
   function isoWeekKey(dateISO) {
     var d = new Date(dateISO + "T12:00:00");
     if (isNaN(d.getTime())) return dateISO;
-    // ISO week date
     var tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     var dayNum = tmp.getUTCDay() || 7;
     tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
@@ -318,7 +436,6 @@
     });
 
     var nameById = {};
-    // Sync name lookup from cached builtins + custom if possible
     try {
       var custom = (store().get().customExercises || []).slice();
       custom.forEach(function (e) {
@@ -345,12 +462,11 @@
       }
       if (relevant.length < 2) return;
 
-      // chronological order of the two
       relevant.reverse();
 
       var stalled = relevant.every(function (entry) {
         var programmed = entry.sets.slice(0, cfg.sets);
-        if (programmed.length < cfg.sets) return true; // incomplete = fail
+        if (programmed.length < cfg.sets) return true;
         return !programmed.every(function (s) {
           return Number(s.reps) >= cfg.repMax;
         });
@@ -360,7 +476,9 @@
         hints.push({
           exerciseId: exId,
           name: nameById[exId] || exId,
-          message: "consider -5 to -10% load",
+          sets: cfg.sets,
+          repMax: cfg.repMax,
+          action: "Drop load 5–10%, then rebuild to all sets at " + cfg.repMax + " reps.",
         });
       }
     });
@@ -370,51 +488,68 @@
 
   function renderEmpty() {
     return (
-      '<div class="empty">' +
-      '<span class="big" aria-hidden="true">—</span>' +
-      "<p>No sessions yet. Log a workout to see trends, volume, and PRs.</p>" +
+      '<div class="empty empty-state">' +
+      '<p class="title">No sessions yet</p>' +
+      '<p class="hint">Log a workout to unlock e1RM trends, meet total, volume, and PRs.</p>' +
+      gotoLogCta("Log first session") +
       "</div>"
     );
   }
 
-  function boardHead(rightLabel) {
-    return (
-      '<div class="board-head"><span>#</span><span>Lift</span><span>' +
-      esc(rightLabel || "Load") +
-      "</span></div>"
-    );
+  function bindRoot(root) {
+    root.onclick = function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var btn = t.closest("[data-action]");
+      if (!btn) return;
+      var action = btn.getAttribute("data-action");
+      if (action === "goto-log" && window.SL.navigate) {
+        window.SL.navigate("log");
+      }
+    };
   }
 
-  function renderE1rmSection() {
-    var html = '<div class="card"><h2>e1RM trends</h2>';
+  /** Competition PRs — memorable Syne load numerals. */
+  function renderPrSection() {
+    var html =
+      '<div class="card">' +
+      "<h2>Competition PRs</h2>" +
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Best belt load · e1RM underneath</p>';
+
     var any = false;
     COMP_LIFTS.forEach(function (lift) {
-      var series = bestE1rmByDate(lift.id);
-      if (!series.length) return;
+      var best = store().bestSet(lift.id);
+      if (!best) {
+        html +=
+          '<div class="pr-row">' +
+          "<div><div class=\"name\">" +
+          esc(lift.label) +
+          '</div><div class="sub">Log a set to claim this PR</div></div>' +
+          '<div class="value muted">—</div></div>';
+        return;
+      }
       any = true;
-      var points = series.map(function (p) {
-        return p.e1rm;
-      });
-      var last = series[series.length - 1];
       html +=
-        '<div style="margin-bottom:16px">' +
-        '<div class="pr-row current" style="border-bottom:none;padding-bottom:4px">' +
-        '<div class="name">' +
+        '<div class="pr-row">' +
+        "<div><div class=\"name\">" +
         esc(lift.label) +
-        '</div><div class="value accent">' +
-        esc(fmtLoad(last.e1rm)) +
-        "</div></div>" +
-        '<div class="chart-wrap">' +
-        svgLineChart(points, 320, 120) +
-        "</div>" +
-        '<p class="muted small">' +
-        esc(series.length + " session" + (series.length === 1 ? "" : "s")) +
-        "</p>" +
-        "</div>";
+        '</div><div class="sub">e1RM ' +
+        esc(fmtLoad(best.e1rm)) +
+        (best.dateISO ? " · " + esc(fmtDateShort(best.dateISO)) : "") +
+        '</div></div><div class="value">' +
+        esc(fmt(fromKg(best.loadKg), 1)) +
+        '<span class="muted small"> ×' +
+        esc(String(best.reps)) +
+        "</span></div></div>";
     });
+
     if (!any) {
-      html += '<p class="muted">No competition lift data yet.</p>';
+      html += sectionEmpty(
+        "No competition PRs",
+        "Hit pull-up, dip, muscle-up, and squat in a logged session."
+      );
     }
+
     html += "</div>";
     return html;
   }
@@ -422,19 +557,45 @@
   function renderTotalSection() {
     var current = currentStreetliftingTotal();
     var hist = streetliftingTotalHistory();
-    var html = '<div class="card"><h2>Streetlifting total</h2>';
+    var missing = missingCompLifts();
+    var html =
+      '<div class="card">' +
+      "<h2>Streetlifting total</h2>" +
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Sum of best e1RM across the four competition lifts</p>';
+
     if (current == null) {
       html +=
-        '<p class="muted">Need a best set for all four lifts (pull-up, dip, muscle-up, squat).</p>';
+        '<p class="muted">Need a best set for every lift.</p>' +
+        '<p class="muted small" style="margin-bottom:10px">Still missing: ' +
+        esc(missing.join(", ") || "all four") +
+        "</p>" +
+        gotoLogCta("Log missing lifts");
     } else {
       html +=
-        '<div class="stat-grid" style="margin-bottom:12px">' +
+        '<div class="stat-grid" style="margin-bottom:8px">' +
         '<div class="stat accent"><div class="val">' +
         esc(fmt(fromKg(current), 1)) +
         '</div><div class="lbl">Meet total · ' +
         esc(unitLabel()) +
-        "</div></div>" +
-        "</div>";
+        "</div></div>";
+
+      if (hist.length >= 2) {
+        var first = hist[0].total;
+        var last = hist[hist.length - 1].total;
+        html +=
+          '<div class="stat"><div class="val">' +
+          esc(deltaLabel(first, last)) +
+          '</div><div class="lbl">Since first full total</div></div>';
+      } else {
+        html +=
+          '<div class="stat"><div class="val">' +
+          esc(String(hist.length || 1)) +
+          '</div><div class="lbl">Full-total session' +
+          (hist.length === 1 ? "" : "s") +
+          "</div></div>";
+      }
+      html += "</div>";
+
       if (hist.length >= 2) {
         html +=
           '<div class="chart-wrap">' +
@@ -443,144 +604,221 @@
               return p.total;
             }),
             320,
-            120
+            140,
+            {
+              ariaLabel: "Streetlifting total over time",
+              xLabels: [
+                fmtDateShort(hist[0].dateISO),
+                fmtDateShort(hist[hist.length - 1].dateISO),
+              ],
+              yDigits: 0,
+            }
           ) +
-          "</div>" +
-          '<p class="muted small">Running sum of best e1RM per competition lift</p>';
-      } else if (hist.length === 1) {
+          "</div>";
+      } else {
         html +=
-          '<p class="muted small">History will appear after more sessions covering all four lifts.</p>';
+          '<p class="muted small">Chart unlocks after another session that covers all four lifts.</p>';
       }
     }
     html += "</div>";
     return html;
   }
 
+  function renderE1rmSection() {
+    var html =
+      '<div class="card">' +
+      "<h2>e1RM trends</h2>" +
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:12px">Best estimated 1RM each session</p>';
+
+    var any = false;
+    COMP_LIFTS.forEach(function (lift) {
+      var series = bestE1rmByDate(lift.id);
+      if (!series.length) return;
+      any = true;
+      var points = series.map(function (p) {
+        return p.e1rm;
+      });
+      var first = series[0];
+      var last = series[series.length - 1];
+      var delta =
+        series.length > 1 ? deltaLabel(first.e1rm, last.e1rm) : "baseline";
+
+      html +=
+        '<div style="margin-bottom:18px">' +
+        '<div class="pr-row" style="border-bottom:none;padding-bottom:2px;padding-top:0">' +
+        "<div><div class=\"name\">" +
+        esc(lift.label) +
+        '</div><div class="sub">' +
+        esc(series.length + " session" + (series.length === 1 ? "" : "s")) +
+        " · " +
+        esc(delta) +
+        '</div></div><div class="value">' +
+        esc(fmt(fromKg(last.e1rm), 1)) +
+        '<span class="muted small"> ' +
+        esc(unitLabel()) +
+        "</span></div></div>" +
+        '<div class="chart-wrap">' +
+        svgLineChart(points, 320, 132, {
+          ariaLabel: lift.label + " e1RM trend",
+          xLabels: [
+            fmtDateShort(first.dateISO),
+            fmtDateShort(last.dateISO),
+          ],
+          yDigits: 0,
+        }) +
+        "</div></div>";
+    });
+
+    if (!any) {
+      html += sectionEmpty(
+        "No e1RM data",
+        "Log competition lifts to plot estimated max over time."
+      );
+    }
+
+    html += "</div>";
+    return html;
+  }
+
   function renderRelativeSection() {
     var html =
-      '<div class="card"><h2>Relative strength</h2><div class="board">' +
-      boardHead("× BW");
-    REL_LIFTS.forEach(function (lift, idx) {
+      '<div class="card">' +
+      "<h2>Relative strength</h2>" +
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">e1RM ÷ bodyweight for pull-up and dip</p>';
+
+    var any = false;
+    REL_LIFTS.forEach(function (lift) {
       var best = store().bestSet(lift.id);
       if (!best) {
         html +=
-          '<div class="board-row"><span class="rank">' +
-          (idx + 1) +
-          '</span><div><div class="name">' +
+          '<div class="pr-row">' +
+          "<div><div class=\"name\">" +
           esc(lift.label) +
-          '</div><div class="sub">No data</div></div><div class="value">—</div></div>';
+          '</div><div class="sub">No best set yet</div></div>' +
+          '<div class="value muted">—</div></div>';
         return;
       }
+      any = true;
       var bw =
         Number(best.bodyweightKg) ||
         Number(store().get().settings.bodyweightKg) ||
         0;
       var ratio = bw > 0 ? best.e1rm / bw : null;
       html +=
-        '<div class="board-row"><span class="rank">' +
-        (idx + 1) +
-        '</span><div><div class="name">' +
+        '<div class="pr-row">' +
+        "<div><div class=\"name\">" +
         esc(lift.label) +
         '</div><div class="sub">e1RM ' +
         esc(fmtLoad(best.e1rm)) +
-        (bw > 0 ? " / BW " + esc(fmtLoad(bw)) : "") +
+        (bw > 0 ? " / BW " + esc(fmtLoad(bw)) : " · set bodyweight in Settings") +
         '</div></div><div class="value">' +
         (ratio != null ? esc(fmt(ratio, 2) + "×") : "—") +
         "</div></div>";
     });
-    html += "</div></div>";
+
+    if (!any) {
+      html += sectionEmpty(
+        "No relative numbers",
+        "Log pull-ups or dips with bodyweight set."
+      );
+    }
+
+    html += "</div>";
     return html;
   }
 
   function renderVolumeSection(weeks) {
-    var html = '<div class="card"><h2>Weekly volume</h2>';
+    var html =
+      '<div class="card">' +
+      "<h2>Weekly volume</h2>" +
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Tonnage = (bodyweight + load) × reps</p>';
+
     if (!weeks.length) {
-      html += '<p class="muted">No volume yet.</p></div>';
+      html += sectionEmpty("No volume yet", "Complete sets in a logged session.");
+      html += "</div>";
       return html;
     }
+
     var recent = weeks.slice(-8);
     var tonnagePts = recent.map(function (w) {
       return w.tonnage;
     });
+    var latest = recent[recent.length - 1];
+
     html +=
+      '<div class="pr-row" style="border-bottom:none;padding-top:0;padding-bottom:4px">' +
+      "<div><div class=\"name\">This week</div>" +
+      '<div class="sub">' +
+      esc(latest.week) +
+      " · " +
+      esc(String(latest.sets)) +
+      " sets</div></div>" +
+      '<div class="value">' +
+      esc(fmt(fromKg(latest.tonnage), 0)) +
+      '<span class="muted small"> ' +
+      esc(unitLabel()) +
+      "</span></div></div>" +
       '<div class="chart-wrap">' +
-      svgLineChart(tonnagePts, 320, 120) +
-      "</div>" +
-      '<p class="muted small" style="margin-bottom:10px">Tonnage (bw+load)×reps — last ' +
-      esc(String(recent.length)) +
-      " week(s)</p>" +
-      '<div class="board">' +
-      boardHead("Tonnage");
+      svgLineChart(tonnagePts, 320, 132, {
+        ariaLabel: "Weekly tonnage",
+        xLabels: [recent[0].week, latest.week],
+        yDigits: 0,
+      }) +
+      "</div>";
 
-    recent
-      .slice()
-      .reverse()
-      .forEach(function (w, idx) {
-        html +=
-          '<div class="board-row' +
-          (idx === 0 ? " current" : "") +
-          '"><span class="rank">' +
-          (idx + 1) +
-          '</span><div><div class="name">' +
-          esc(w.week) +
-          '</div><div class="sub">' +
-          esc(String(w.sets)) +
-          ' sets</div></div><div class="value">' +
-          esc(fmt(fromKg(w.tonnage), 0)) +
-          " " +
-          esc(unitLabel()) +
-          "</div></div>";
-      });
-    html += "</div></div>";
-    return html;
-  }
+    if (recent.length > 1) {
+      html += '<hr class="weld"/>';
+      recent
+        .slice()
+        .reverse()
+        .slice(1, 5)
+        .forEach(function (w) {
+          html +=
+            '<div class="pr-row">' +
+            "<div><div class=\"name\">" +
+            esc(w.week) +
+            '</div><div class="sub">' +
+            esc(String(w.sets)) +
+            ' sets</div></div><div class="value" style="color:var(--text)">' +
+            esc(fmt(fromKg(w.tonnage), 0)) +
+            " " +
+            esc(unitLabel()) +
+            "</div></div>";
+        });
+    }
 
-  function renderPrSection() {
-    var html =
-      '<div class="card"><h2>Competition PRs</h2><div class="board">' +
-      boardHead("Best");
-    COMP_LIFTS.forEach(function (lift, idx) {
-      var best = store().bestSet(lift.id);
-      if (!best) {
-        html +=
-          '<div class="board-row"><span class="rank">' +
-          (idx + 1) +
-          '</span><div class="name">' +
-          esc(lift.label) +
-          '</div><div class="value muted">—</div></div>';
-        return;
-      }
-      html +=
-        '<div class="board-row"><span class="rank">' +
-        (idx + 1) +
-        '</span><div><div class="name">' +
-        esc(lift.label) +
-        '</div><div class="sub">e1RM ' +
-        esc(fmtLoad(best.e1rm)) +
-        (best.dateISO ? " · " + esc(best.dateISO) : "") +
-        '</div></div><div class="value">' +
-        esc(fmt(fromKg(best.loadKg), 1)) +
-        " × " +
-        esc(String(best.reps)) +
-        "</div></div>";
-    });
-    html += "</div></div>";
+    html += "</div>";
     return html;
   }
 
   function renderStallSection(hints) {
     if (!hints.length) return "";
-    var html = '<div class="card"><h2>Progression hints</h2>';
+    var html =
+      '<div class="card">' +
+      "<h2>Progression hints</h2>" +
+      '<p class="muted small" style="margin-top:-6px;margin-bottom:10px">Double progression — last 2 sessions missed top reps</p>';
+
     hints.forEach(function (h) {
       html +=
         '<div class="insight">' +
         '<div class="ico" aria-hidden="true">!</div>' +
         "<div><span class=\"badge amber\">Stall</span> <strong>" +
         esc(h.name) +
-        "</strong> — last 2 sessions missed rep max; " +
-        esc(h.message) +
-        "</div></div>";
+        "</strong>" +
+        '<div class="muted small" style="margin-top:4px">' +
+        esc(
+          "Missed " +
+            h.repMax +
+            " reps across " +
+            h.sets +
+            " sets, twice."
+        ) +
+        "</div>" +
+        "<div style=\"margin-top:4px\">" +
+        esc(h.action) +
+        "</div></div></div>";
     });
+
     html += "</div>";
     return html;
   }
@@ -594,19 +832,23 @@
     var sessions = store().listSessions() || [];
     if (!sessions.length) {
       root.innerHTML = renderEmpty();
+      bindRoot(root);
       return;
     }
 
     var weeks = weeklyVolume();
     var hints = stallHints();
 
+    // Narrative: PRs → meet total → trends → relative → volume → coaching
     root.innerHTML =
-      renderStallSection(hints) +
-      renderE1rmSection() +
+      renderPrSection() +
       renderTotalSection() +
+      renderE1rmSection() +
       renderRelativeSection() +
       renderVolumeSection(weeks) +
-      renderPrSection();
+      renderStallSection(hints);
+
+    bindRoot(root);
   }
 
   window.SL.views.analytics = {
@@ -614,6 +856,5 @@
     title: title,
   };
 
-  // Expose helper for tests / reuse
   window.SL.views.analytics.svgLineChart = svgLineChart;
 })();
