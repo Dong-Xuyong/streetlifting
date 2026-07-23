@@ -399,7 +399,7 @@
       '<div class="timer-label">Rest</div>' +
       '<div class="timer-display" data-timer-display>0:00</div>' +
       '<div class="timer-actions">' +
-      '<button type="button" class="btn btn-primary" data-timer-skip>Skip</button>' +
+      '<button type="button" class="btn btn-primary" data-timer-skip>Skip rest</button>' +
       "</div>";
     document.body.appendChild(overlayEl);
     overlayEl.addEventListener("click", function (e) {
@@ -483,7 +483,7 @@
         '<span class="set-num">' +
         (i + 1) +
         "</span>" +
-        '<input type="number" inputmode="decimal" step="any" data-field="load" placeholder="0" value="' +
+        '<input type="number" class="load-num" inputmode="decimal" step="any" data-field="load" placeholder="0" value="' +
         esc(kgToDisplay(set.loadKg, unit)) +
         '" aria-label="Load" />' +
         '<input type="number" inputmode="numeric" step="1" data-field="reps" placeholder="0" value="' +
@@ -938,10 +938,10 @@
     bindHistory(root);
 
     if (!sessions.length) {
-      root.innerHTML =
+        root.innerHTML =
         '<div class="empty"><p class="title">No sessions yet</p>' +
-        "<p>Log a workout to see history here.</p>" +
-        '<button type="button" class="btn btn-primary" data-hist-action="goto-log">Log session</button></div>';
+        "<p>Complete a workout to build history here.</p>" +
+        '<div class="actions"><button type="button" class="btn btn-primary" data-hist-action="goto-log">Start workout</button></div></div>';
       return;
     }
 

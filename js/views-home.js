@@ -33,11 +33,16 @@
     return n;
   }
 
-  function fmtWeight(kg, unit) {
+  function fmtNum(kg, unit) {
     var v = kgToDisplay(kg, unit);
-    if (v == null) return "—";
+    if (v == null) return null;
     var rounded = Math.round(v * 10) / 10;
-    var text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
+  function fmtWeight(kg, unit) {
+    var text = fmtNum(kg, unit);
+    if (text == null) return "—";
     return text + " " + unit;
   }
 
@@ -83,93 +88,6 @@
     return days[(idx + 1) % days.length];
   }
 
-  function renderCycleSessionCard(program, session, unit) {
-    var html =
-      '<div class="card">' +
-      "<h2>Program</h2>" +
-      '<div class="spread" style="margin-bottom:12px">' +
-      "<div><strong>" +
-      esc(program.name || "Squat cycle") +
-      '</strong><div class="muted small">Active · target ' +
-      esc(fmtWeight(program.target1rmKg, unit)) +
-      "</div></div>" +
-      '<button type="button" class="btn secondary sm" data-action="goto-program">View</button>' +
-      "</div>";
-
-    if (!session) {
-      html += '<p class="muted">Schedule unavailable.</p></div>';
-      return html;
-    }
-
-    html +=
-      "<h2>Next session</h2>" +
-      '<p style="font-weight:700;margin-bottom:4px">' +
-      esc(session.name) +
-      "</p>" +
-      '<p class="muted small" style="margin-bottom:10px">' +
-      esc(session.dateISO) +
-      "</p>";
-
-    var exercises = session.exercises || [];
-    for (var i = 0; i < exercises.length; i++) {
-      var pe = exercises[i];
-      var load =
-        pe.loadKgMax != null && pe.loadKgMax !== pe.loadKg
-          ? fmtWeight(pe.loadKg, unit) + "–" + fmtWeight(pe.loadKgMax, unit)
-          : fmtWeight(pe.loadKg, unit);
-      html +=
-        '<div class="pr-row">' +
-        '<div><div class="name">Squat</div><div class="sub">' +
-        esc(pe.sets + " × " + pe.reps + " @ " + (pe.pctLabel || "") + " · " + load) +
-        "</div></div></div>";
-    }
-
-    html +=
-      '<button type="button" class="btn block" data-action="start-workout" style="margin-top:14px">Start workout</button>' +
-      "</div>";
-    return html;
-  }
-
-  function renderPullupWaveCard(program, session, unit) {
-    var html =
-      '<div class="card">' +
-      "<h2>Program</h2>" +
-      '<div class="spread" style="margin-bottom:12px">' +
-      "<div><strong>" +
-      esc(program.name || "Pull-up wave") +
-      '</strong><div class="muted small">Active · intensive ' +
-      esc(fmtWeight(program.intensiveLoadKg, unit)) +
-      "</div></div>" +
-      '<button type="button" class="btn secondary sm" data-action="goto-program">View</button>' +
-      "</div>";
-
-    if (!session) {
-      html += '<p class="muted">Wave session unavailable.</p></div>';
-      return html;
-    }
-
-    html +=
-      "<h2>Next session</h2>" +
-      '<p style="font-weight:700;margin-bottom:10px">' +
-      esc(session.name) +
-      "</p>";
-
-    var exercises = session.exercises || [];
-    for (var i = 0; i < exercises.length; i++) {
-      var pe = exercises[i];
-      html +=
-        '<div class="pr-row">' +
-        '<div><div class="name">Pull-up</div><div class="sub">' +
-        esc(pe.sets + " × " + pe.reps + " @ " + fmtWeight(pe.loadKg, unit)) +
-        "</div></div></div>";
-    }
-
-    html +=
-      '<button type="button" class="btn block" data-action="start-workout" style="margin-top:14px">Start workout</button>' +
-      "</div>";
-    return html;
-  }
-
   function startWorkout() {
     SL.pendingStart = true;
     if (typeof SL.navigate === "function") {
@@ -177,93 +95,254 @@
     }
   }
 
-  function renderBodyweight(settings, unit) {
-    var bw = settings && settings.bodyweightKg;
-    if (bw == null || bw === "" || isNaN(Number(bw))) {
-      return (
-        '<div class="card">' +
-        "<h2>Bodyweight</h2>" +
-        '<p class="muted">Not set — add it in Settings.</p>' +
-        "</div>"
-      );
+  /** Primary belt-load artifact for the home hero. */
+  function renderLoadHero(opts) {
+    var num = opts.num;
+    var unit = opts.unit || "kg";
+    var lift = opts.lift || "";
+    var meta = opts.meta || "";
+    var eyebrow = opts.eyebrow || "Next load";
+    var ctaLabel = opts.ctaLabel || "Start workout";
+    var ctaAction = opts.ctaAction || "start-workout";
+    var empty = !num || num === "—";
+
+    var html =
+      '<section class="load-hero' +
+      (empty ? " empty" : "") +
+      '" aria-label="Next working load">' +
+      '<div class="eyebrow">' +
+      esc(eyebrow) +
+      "</div>" +
+      '<span class="num">' +
+      esc(empty ? "—" : (String(num).charAt(0) === "+" ? num : "+" + num)) +
+      "</span>" +
+      '<div class="unit">' +
+      esc(unit) +
+      "</div>";
+
+    if (lift) {
+      html += '<div class="lift">' + esc(lift) + "</div>";
     }
+    if (meta) {
+      html += '<div class="meta">' + esc(meta) + "</div>";
+    }
+
+    html +=
+      '<div class="cta">' +
+      '<button type="button" class="btn primary block" data-action="' +
+      esc(ctaAction) +
+      '">' +
+      esc(ctaLabel) +
+      "</button></div></section>";
+    return html;
+  }
+
+  function renderExerciseRows(rows) {
+    if (!rows || !rows.length) {
+      return '<p class="muted">No exercises planned.</p>';
+    }
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      html +=
+        '<div class="pr-row">' +
+        "<div><div class=\"name\">" +
+        esc(r.name) +
+        '</div><div class="sub">' +
+        esc(r.sub) +
+        "</div></div></div>";
+    }
+    return html;
+  }
+
+  function renderDayCard(title, programName, rows, editLabel) {
     return (
       '<div class="card">' +
-      "<h2>Bodyweight</h2>" +
-      '<div class="stat-grid">' +
-      '<div class="stat"><div class="val">' +
-      esc(fmtWeight(bw, unit)) +
-      '</div><div class="lbl">Current</div></div>' +
-      "</div></div>"
+      "<h2>" +
+      esc(title) +
+      "</h2>" +
+      '<div class="spread" style="margin-bottom:12px">' +
+      "<div><strong>" +
+      esc(programName) +
+      '</strong><div class="muted small">Active</div></div>' +
+      '<button type="button" class="btn secondary sm" data-action="goto-program">' +
+      esc(editLabel || "View") +
+      "</button></div>" +
+      renderExerciseRows(rows) +
+      "</div>"
     );
   }
 
-  function renderProgramCard(program, day, names, unit) {
-    if (!program) {
+  function renderEmptyProgram() {
+    return (
+      renderLoadHero({
+        num: null,
+        unit: "kg",
+        eyebrow: "No program",
+        lift: "Create a program",
+        meta: "Pick a day, then start from here",
+        ctaLabel: "Create a program",
+        ctaAction: "goto-program",
+      }) +
+      '<div class="card">' +
+      "<h2>Program</h2>" +
+      '<p class="muted">No active program yet. Set one up, then your next belt load shows here.</p>' +
+      "</div>"
+    );
+  }
+
+  function renderBodyweightMeta(settings, unit) {
+    var bw = settings && settings.bodyweightKg;
+    if (bw == null || bw === "" || isNaN(Number(bw))) {
       return (
-        '<div class="card">' +
-        "<h2>Program</h2>" +
-        '<p class="muted">No active program yet.</p>' +
-        '<button type="button" class="btn block" data-action="goto-program">Create a program</button>' +
-        "</div>"
+        '<p class="muted small" style="margin:4px 0 14px">Bodyweight not set — add it in Settings.</p>'
+      );
+    }
+    return (
+      '<p class="muted small" style="margin:4px 0 14px">BW ' +
+      esc(fmtWeight(bw, unit)) +
+      "</p>"
+    );
+  }
+
+  function renderCycleSessionHome(program, session, unit) {
+    if (!session) {
+      return (
+        renderLoadHero({
+          num: null,
+          unit: unit,
+          eyebrow: program.name || "Squat cycle",
+          lift: "Schedule unavailable",
+          ctaLabel: "Open Programs",
+          ctaAction: "goto-program",
+        }) +
+        renderDayCard("Program", program.name || "Squat cycle", [], "View")
       );
     }
 
-    var html =
-      '<div class="card">' +
-      "<h2>Program</h2>" +
-      '<div class="spread" style="margin-bottom:12px">' +
-      "<div><strong>" +
-      esc(program.name || "Untitled") +
-      '</strong><div class="muted small">Active</div></div>' +
-      '<button type="button" class="btn secondary sm" data-action="goto-program">Edit</button>' +
-      "</div>";
+    var pe = (session.exercises && session.exercises[0]) || null;
+    var num = pe ? fmtNum(pe.loadKg, unit) : null;
+    var rows = [];
+    var exercises = session.exercises || [];
+    for (var i = 0; i < exercises.length; i++) {
+      var ex = exercises[i];
+      var load =
+        ex.loadKgMax != null && ex.loadKgMax !== ex.loadKg
+          ? fmtWeight(ex.loadKg, unit) + "–" + fmtWeight(ex.loadKgMax, unit)
+          : fmtWeight(ex.loadKg, unit);
+      rows.push({
+        name: "Squat",
+        sub: ex.sets + " × " + ex.reps + " @ " + (ex.pctLabel || "") + " · " + load,
+      });
+    }
+
+    return (
+      renderLoadHero({
+        num: num,
+        unit: unit,
+        eyebrow: "Next load",
+        lift: "Squat",
+        meta: (session.name || "Session") + (session.dateISO ? " · " + session.dateISO : ""),
+      }) +
+      renderDayCard("Session", program.name || "Squat cycle", rows, "View")
+    );
+  }
+
+  function renderPullupWaveHome(program, session, unit) {
+    if (!session) {
+      return (
+        renderLoadHero({
+          num: null,
+          unit: unit,
+          eyebrow: program.name || "Pull-up wave",
+          lift: "Wave session unavailable",
+          ctaLabel: "Open Programs",
+          ctaAction: "goto-program",
+        }) +
+        renderDayCard("Program", program.name || "Pull-up wave", [], "View")
+      );
+    }
+
+    var pe = (session.exercises && session.exercises[0]) || null;
+    var num = pe ? fmtNum(pe.loadKg, unit) : null;
+    var rows = [];
+    var exercises = session.exercises || [];
+    for (var i = 0; i < exercises.length; i++) {
+      var ex = exercises[i];
+      rows.push({
+        name: "Pull-up",
+        sub: ex.sets + " × " + ex.reps + " @ " + fmtWeight(ex.loadKg, unit),
+      });
+    }
+
+    return (
+      renderLoadHero({
+        num: num,
+        unit: unit,
+        eyebrow: "Next load",
+        lift: "Pull-up",
+        meta: session.name || "Wave session",
+      }) +
+      renderDayCard("Session", program.name || "Pull-up wave", rows, "View")
+    );
+  }
+
+  function renderProgramHome(program, day, names, unit) {
+    if (!program) return renderEmptyProgram();
 
     if (!day) {
-      html += '<p class="muted">This program has no days yet.</p></div>';
-      return html;
+      return (
+        renderLoadHero({
+          num: null,
+          unit: unit,
+          eyebrow: program.name || "Program",
+          lift: "No days yet",
+          ctaLabel: "Edit program",
+          ctaAction: "goto-program",
+        }) +
+        renderDayCard("Program", program.name || "Untitled", [], "Edit")
+      );
     }
-
-    html +=
-      "<h2>Today / next day</h2>" +
-      '<p style="font-weight:700;margin-bottom:10px">' +
-      esc(day.name || "Day") +
-      "</p>";
 
     var exercises = day.exercises || [];
-    if (!exercises.length) {
-      html += '<p class="muted">No exercises on this day.</p>';
-    } else {
-      for (var i = 0; i < exercises.length; i++) {
-        var pe = exercises[i];
-        var name = names[pe.exerciseId] || pe.exerciseId || "Exercise";
-        var sets = pe.sets != null ? pe.sets : "?";
-        var reps =
-          pe.repMin != null && pe.repMax != null
-            ? pe.repMin === pe.repMax
-              ? String(pe.repMin)
-              : pe.repMin + "–" + pe.repMax
-            : pe.repMin != null
-              ? String(pe.repMin)
-              : pe.repMax != null
-                ? String(pe.repMax)
-                : "?";
-        var load =
-          pe.startLoadKg != null ? fmtWeight(pe.startLoadKg, unit) : null;
-        html +=
-          '<div class="pr-row">' +
-          '<div><div class="name">' +
-          esc(name) +
-          '</div><div class="sub">' +
-          esc(sets + " × " + reps + (load ? " @ " + load : "")) +
-          "</div></div></div>";
-      }
+    var first = exercises[0] || null;
+    var firstName = first
+      ? names[first.exerciseId] || first.exerciseId || "Exercise"
+      : day.name || "Day";
+    var num = first && first.startLoadKg != null ? fmtNum(first.startLoadKg, unit) : null;
+
+    var rows = [];
+    for (var i = 0; i < exercises.length; i++) {
+      var pe = exercises[i];
+      var name = names[pe.exerciseId] || pe.exerciseId || "Exercise";
+      var sets = pe.sets != null ? pe.sets : "?";
+      var reps =
+        pe.repMin != null && pe.repMax != null
+          ? pe.repMin === pe.repMax
+            ? String(pe.repMin)
+            : pe.repMin + "–" + pe.repMax
+          : pe.repMin != null
+            ? String(pe.repMin)
+            : pe.repMax != null
+              ? String(pe.repMax)
+              : "?";
+      var load = pe.startLoadKg != null ? fmtWeight(pe.startLoadKg, unit) : null;
+      rows.push({
+        name: name,
+        sub: sets + " × " + reps + (load ? " @ " + load : ""),
+      });
     }
 
-    html +=
-      '<button type="button" class="btn block" data-action="start-workout" style="margin-top:14px">Start workout</button>' +
-      "</div>";
-    return html;
+    return (
+      renderLoadHero({
+        num: num,
+        unit: unit,
+        eyebrow: "Next load",
+        lift: firstName,
+        meta: (day.name || "Day") + " · " + (program.name || "Program"),
+      }) +
+      renderDayCard("Today / next day", program.name || "Untitled", rows, "Edit")
+    );
   }
 
   function renderPrs(unit) {
@@ -279,7 +358,10 @@
         sub = "No sets yet";
       } else {
         any = true;
-        value = fmtWeight(best.loadKg, unit) + " × " + (best.reps != null ? best.reps : "?");
+        value =
+          fmtWeight(best.loadKg, unit) +
+          " × " +
+          (best.reps != null ? best.reps : "?");
         var e1 = best.e1rm != null ? fmtWeight(best.e1rm, unit) + " e1RM" : "";
         var date = best.dateISO ? best.dateISO : "";
         sub = [e1, date].filter(Boolean).join(" · ") || "Best e1RM";
@@ -295,7 +377,8 @@
         "</div></div></div>";
     }
     if (!any) {
-      html += '<p class="muted small" style="margin-top:8px">Log sessions to track competition PRs.</p>';
+      html +=
+        '<p class="muted small" style="margin-top:8px">Log sessions to track competition PRs.</p>';
     }
     html += "</div>";
     return html;
@@ -310,7 +393,9 @@
 
     function finish(programHtml) {
       root.innerHTML =
-        renderBodyweight(settings, unit) + programHtml + renderPrs(unit);
+        programHtml +
+        renderBodyweightMeta(settings, unit) +
+        renderPrs(unit);
 
       root.onclick = function (e) {
         var t = e.target;
@@ -328,62 +413,97 @@
 
     if (program && program.kind === "percent_cycle") {
       finish(
-        '<div class="card"><p class="muted">Loading squat schedule…</p></div>'
+        renderLoadHero({
+          num: null,
+          unit: unit,
+          eyebrow: "Loading",
+          lift: "Squat schedule…",
+          ctaLabel: "Start workout",
+        })
       );
       SL.store
         .loadSquatCycleScheme()
         .then(function (scheme) {
           if (!root.isConnected) return;
           var session = SL.store.nextCycleSession(program, scheme);
-          finish(renderCycleSessionCard(program, session, unit));
+          finish(renderCycleSessionHome(program, session, unit));
         })
         .catch(function () {
           if (!root.isConnected) return;
           finish(
-            '<div class="card"><h2>Program</h2><p class="muted">Could not load squat cycle schedule.</p>' +
-              '<button type="button" class="btn block" data-action="goto-program">Open Programs</button></div>'
+            renderLoadHero({
+              num: null,
+              unit: unit,
+              eyebrow: "Squat cycle",
+              lift: "Could not load schedule",
+              ctaLabel: "Open Programs",
+              ctaAction: "goto-program",
+            })
           );
         });
       return;
     }
 
     if (program && program.kind === "pullup_wave") {
-      finish('<div class="card"><p class="muted">Loading pull-up wave…</p></div>');
+      finish(
+        renderLoadHero({
+          num: null,
+          unit: unit,
+          eyebrow: "Loading",
+          lift: "Pull-up wave…",
+          ctaLabel: "Start workout",
+        })
+      );
       SL.store
         .loadPullupWaveScheme()
         .then(function (scheme) {
           if (!root.isConnected) return;
-          var session = SL.store.currentPullupWaveSession(program, scheme, "next");
-          finish(renderPullupWaveCard(program, session, unit));
+          var session = SL.store.currentPullupWaveSession(
+            program,
+            scheme,
+            "next"
+          );
+          finish(renderPullupWaveHome(program, session, unit));
         })
         .catch(function () {
           if (!root.isConnected) return;
           finish(
-            '<div class="card"><h2>Program</h2><p class="muted">Could not load pull-up wave.</p>' +
-              '<button type="button" class="btn block" data-action="goto-program">Open Programs</button></div>'
+            renderLoadHero({
+              num: null,
+              unit: unit,
+              eyebrow: "Pull-up wave",
+              lift: "Could not load wave",
+              ctaLabel: "Open Programs",
+              ctaAction: "goto-program",
+            })
           );
         });
       return;
     }
 
     var day = program ? nextProgramDay(program) : null;
-    finish(renderProgramCard(program, day, names, unit));
+    finish(renderProgramHome(program, day, names, unit));
 
     if (typeof SL.store.listExercises === "function") {
-      SL.store.listExercises().then(function (list) {
-        if (!root.isConnected) return;
-        var changed = false;
-        for (var i = 0; i < list.length; i++) {
-          var ex = list[i];
-          if (ex && ex.id && names[ex.id] !== ex.name) {
-            names[ex.id] = ex.name;
-            changed = true;
+      SL.store
+        .listExercises()
+        .then(function (list) {
+          if (!root.isConnected) return;
+          var changed = false;
+          for (var i = 0; i < list.length; i++) {
+            var ex = list[i];
+            if (ex && ex.id && names[ex.id] !== ex.name) {
+              names[ex.id] = ex.name;
+              changed = true;
+            }
           }
-        }
-        if (changed && program && day) {
-          finish(renderProgramCard(program, day, names, unit));
-        }
-      }).catch(function () { /* ignore */ });
+          if (changed && program && day) {
+            finish(renderProgramHome(program, day, names, unit));
+          }
+        })
+        .catch(function () {
+          /* ignore */
+        });
     }
   }
 

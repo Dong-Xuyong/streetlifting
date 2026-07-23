@@ -1,8 +1,10 @@
 {
   "name": "Streetlifting",
   "short_name": "Streetlift",
+  "description": "Weighted calisthenics tracker — chalk on steel",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0d1117",
-  "theme_color": "#0d1117"
+  "theme_color": "#0d1117",
+  "lang": "en"
 }

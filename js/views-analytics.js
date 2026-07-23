@@ -377,6 +377,14 @@
     );
   }
 
+  function boardHead(rightLabel) {
+    return (
+      '<div class="board-head"><span>#</span><span>Lift</span><span>' +
+      esc(rightLabel || "Load") +
+      "</span></div>"
+    );
+  }
+
   function renderE1rmSection() {
     var html = '<div class="card"><h2>e1RM trends</h2>';
     var any = false;
@@ -390,14 +398,12 @@
       var last = series[series.length - 1];
       html +=
         '<div style="margin-bottom:16px">' +
-        '<div class="spread" style="margin-bottom:6px">' +
-        '<span class="pr-row name">' +
+        '<div class="pr-row current" style="border-bottom:none;padding-bottom:4px">' +
+        '<div class="name">' +
         esc(lift.label) +
-        "</span>" +
-        '<span class="pr-row value">' +
+        '</div><div class="value accent">' +
         esc(fmtLoad(last.e1rm)) +
-        "</span>" +
-        "</div>" +
+        "</div></div>" +
         '<div class="chart-wrap">' +
         svgLineChart(points, 320, 120) +
         "</div>" +
@@ -423,11 +429,11 @@
     } else {
       html +=
         '<div class="stat-grid" style="margin-bottom:12px">' +
-        '<div class="stat"><div class="val">' +
+        '<div class="stat accent"><div class="val">' +
         esc(fmt(fromKg(current), 1)) +
-        '</div><div class="lbl">Current total (' +
+        '</div><div class="lbl">Meet total · ' +
         esc(unitLabel()) +
-        ")</div></div>" +
+        "</div></div>" +
         "</div>";
       if (hist.length >= 2) {
         html +=
@@ -451,13 +457,16 @@
   }
 
   function renderRelativeSection() {
-    var html = '<div class="card"><h2>Relative strength</h2>';
-    var rows = "";
-    REL_LIFTS.forEach(function (lift) {
+    var html =
+      '<div class="card"><h2>Relative strength</h2><div class="board">' +
+      boardHead("× BW");
+    REL_LIFTS.forEach(function (lift, idx) {
       var best = store().bestSet(lift.id);
       if (!best) {
-        rows +=
-          '<div class="pr-row"><div><div class="name">' +
+        html +=
+          '<div class="board-row"><span class="rank">' +
+          (idx + 1) +
+          '</span><div><div class="name">' +
           esc(lift.label) +
           '</div><div class="sub">No data</div></div><div class="value">—</div></div>';
         return;
@@ -467,8 +476,10 @@
         Number(store().get().settings.bodyweightKg) ||
         0;
       var ratio = bw > 0 ? best.e1rm / bw : null;
-      rows +=
-        '<div class="pr-row"><div><div class="name">' +
+      html +=
+        '<div class="board-row"><span class="rank">' +
+        (idx + 1) +
+        '</span><div><div class="name">' +
         esc(lift.label) +
         '</div><div class="sub">e1RM ' +
         esc(fmtLoad(best.e1rm)) +
@@ -477,7 +488,7 @@
         (ratio != null ? esc(fmt(ratio, 2) + "×") : "—") +
         "</div></div>";
     });
-    html += rows + "</div>";
+    html += "</div></div>";
     return html;
   }
 
@@ -497,14 +508,20 @@
       "</div>" +
       '<p class="muted small" style="margin-bottom:10px">Tonnage (bw+load)×reps — last ' +
       esc(String(recent.length)) +
-      " week(s)</p>";
+      " week(s)</p>" +
+      '<div class="board">' +
+      boardHead("Tonnage");
 
     recent
       .slice()
       .reverse()
-      .forEach(function (w) {
+      .forEach(function (w, idx) {
         html +=
-          '<div class="pr-row"><div><div class="name">' +
+          '<div class="board-row' +
+          (idx === 0 ? " current" : "") +
+          '"><span class="rank">' +
+          (idx + 1) +
+          '</span><div><div class="name">' +
           esc(w.week) +
           '</div><div class="sub">' +
           esc(String(w.sets)) +
@@ -514,23 +531,29 @@
           esc(unitLabel()) +
           "</div></div>";
       });
-    html += "</div>";
+    html += "</div></div>";
     return html;
   }
 
   function renderPrSection() {
-    var html = '<div class="card"><h2>PRs</h2>';
-    COMP_LIFTS.forEach(function (lift) {
+    var html =
+      '<div class="card"><h2>Competition PRs</h2><div class="board">' +
+      boardHead("Best");
+    COMP_LIFTS.forEach(function (lift, idx) {
       var best = store().bestSet(lift.id);
       if (!best) {
         html +=
-          '<div class="pr-row"><div class="name">' +
+          '<div class="board-row"><span class="rank">' +
+          (idx + 1) +
+          '</span><div class="name">' +
           esc(lift.label) +
           '</div><div class="value muted">—</div></div>';
         return;
       }
       html +=
-        '<div class="pr-row"><div><div class="name">' +
+        '<div class="board-row"><span class="rank">' +
+        (idx + 1) +
+        '</span><div><div class="name">' +
         esc(lift.label) +
         '</div><div class="sub">e1RM ' +
         esc(fmtLoad(best.e1rm)) +
@@ -541,7 +564,7 @@
         esc(String(best.reps)) +
         "</div></div>";
     });
-    html += "</div>";
+    html += "</div></div>";
     return html;
   }
 
@@ -550,9 +573,9 @@
     var html = '<div class="card"><h2>Progression hints</h2>';
     hints.forEach(function (h) {
       html +=
-        '<div class="insight" style="color:var(--amber, #d9a038)">' +
+        '<div class="insight">' +
         '<div class="ico" aria-hidden="true">!</div>' +
-        "<div><strong>" +
+        "<div><span class=\"badge amber\">Stall</span> <strong>" +
         esc(h.name) +
         "</strong> — last 2 sessions missed rep max; " +
         esc(h.message) +
