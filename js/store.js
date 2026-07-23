@@ -82,7 +82,14 @@
 
     if (Array.isArray(raw.customExercises)) d.customExercises = raw.customExercises;
     if (Array.isArray(raw.programs)) d.programs = raw.programs;
-    if (Array.isArray(raw.sessions)) d.sessions = raw.sessions;
+    if (Array.isArray(raw.sessions)) {
+      d.sessions = raw.sessions.map(function (sess) {
+        if (!isPlainObject(sess)) return sess;
+        if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
+        if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
+        return sess;
+      });
+    }
     return d;
   }
 
@@ -224,6 +231,8 @@
     if (!sess || typeof sess !== "object") throw new Error("Invalid session");
     ensureId(sess);
     if (!Array.isArray(sess.sets)) sess.sets = [];
+    if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
+    if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
     var s = get();
     var i = s.sessions.findIndex(function (x) {
       return x.id === sess.id;

@@ -11,7 +11,86 @@
   var draft = null;
   /** @type {string|null} */
   var historyDetailId = null;
+  /** @type {{y:number,m:number}|null} month is 0-based */
+  var calMonth = null;
+  /** @type {string|null} YYYY-MM-DD */
+  var calSelectedISO = null;
   var overlayEl = null;
+
+  function ensureNotes(obj) {
+    if (!obj || typeof obj !== "object") return obj;
+    if (typeof obj.note !== "string") obj.note = obj.note != null ? String(obj.note) : "";
+    if (!obj.sectionNotes || typeof obj.sectionNotes !== "object") obj.sectionNotes = {};
+    return obj;
+  }
+
+  function monthLabel(y, m) {
+    var names = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    return names[m] + " " + y;
+  }
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function isoFromYMD(y, m, d) {
+    return y + "-" + pad2(m + 1) + "-" + pad2(d);
+  }
+
+  function parseISODate(iso) {
+    if (!iso || typeof iso !== "string") return null;
+    var p = iso.split("-");
+    if (p.length < 3) return null;
+    var y = Number(p[0]);
+    var m = Number(p[1]) - 1;
+    var d = Number(p[2]);
+    if (!y || m < 0 || m > 11 || !d) return null;
+    return { y: y, m: m, d: d };
+  }
+
+  function ensureCalMonth() {
+    if (calMonth) return calMonth;
+    var now = new Date();
+    calMonth = { y: now.getFullYear(), m: now.getMonth() };
+    return calMonth;
+  }
+
+  function sessionsByDate() {
+    var map = {};
+    var sessions = SL.store.listSessions() || [];
+    for (var i = 0; i < sessions.length; i++) {
+      var iso = sessions[i].dateISO || "";
+      if (!iso) continue;
+      if (!map[iso]) map[iso] = [];
+      map[iso].push(sessions[i]);
+    }
+    return map;
+  }
+
+  function uniqueExerciseIds(sets) {
+    var ids = [];
+    var seen = {};
+    for (var i = 0; i < (sets || []).length; i++) {
+      var id = sets[i].exerciseId;
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      ids.push(id);
+    }
+    return ids;
+  }
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -102,6 +181,8 @@
       programId: null,
       dayId: null,
       dayName: null,
+      note: "",
+      sectionNotes: {},
       sets: [],
     };
   }
@@ -155,6 +236,8 @@
       week: null,
       dayNum: null,
       cycleKey: null,
+      note: "",
+      sectionNotes: {},
       sets: sets,
     };
   }
@@ -202,6 +285,8 @@
       waveDay: null,
       phaseIndex: null,
       intensiveLoadKg: null,
+      note: "",
+      sectionNotes: {},
       sets: sets,
     };
   }
@@ -239,6 +324,8 @@
       waveDay: session ? session.waveDay : null,
       phaseIndex: session ? session.phaseIndex : null,
       intensiveLoadKg: session ? session.intensiveLoadKg : null,
+      note: "",
+      sectionNotes: {},
       sets: sets,
     };
   }
@@ -255,6 +342,14 @@
         targetRepsLabel: "",
       };
     });
+    var notes = {};
+    if (sess.sectionNotes && typeof sess.sectionNotes === "object") {
+      for (var k in sess.sectionNotes) {
+        if (Object.prototype.hasOwnProperty.call(sess.sectionNotes, k)) {
+          notes[k] = String(sess.sectionNotes[k] == null ? "" : sess.sectionNotes[k]);
+        }
+      }
+    }
     return {
       id: sess.id,
       dateISO: sess.dateISO || todayISO(),
@@ -262,6 +357,8 @@
       programId: sess.programId || null,
       dayId: sess.dayId || null,
       dayName: null,
+      note: typeof sess.note === "string" ? sess.note : "",
+      sectionNotes: notes,
       sets: sets,
     };
   }
@@ -449,6 +546,8 @@
       return '<p class="muted">No sets yet. Add a set to begin.</p>';
     }
 
+    ensureNotes(draft);
+    var seenNote = {};
     var html =
       '<div class="set-head" style="grid-template-columns:1fr">' +
       "<span>Sets</span></div>";
@@ -465,6 +564,12 @@
           ) +
           "</p>";
       }
+      var showSectionNote = !!(set.exerciseId && !seenNote[set.exerciseId]);
+      if (showSectionNote) seenNote[set.exerciseId] = true;
+      var sectionVal =
+        set.exerciseId && draft.sectionNotes[set.exerciseId]
+          ? draft.sectionNotes[set.exerciseId]
+          : "";
       html +=
         '<div class="exercise-block" data-set-idx="' +
         i +
@@ -496,6 +601,12 @@
           ? '<span class="badge green" title="Completed">OK</span>'
           : '<button type="button" class="btn sm btn-primary" data-action="complete-set" aria-label="Complete set">Done</button>') +
         "</div>" +
+        (showSectionNote
+          ? '<label class="field section-note"><span class="lbl">Your note</span>' +
+            '<textarea data-field="section-note" rows="2" placeholder="How did this section feel?">' +
+            esc(sectionVal) +
+            "</textarea></label>"
+          : "") +
         "</div>";
     }
     return html;
@@ -530,6 +641,11 @@
       }
       return;
     }
+    if (t.id === "log-session-note") {
+      ensureNotes(draft);
+      draft.note = t.value || "";
+      return;
+    }
 
     var block = t.closest && t.closest("[data-set-idx]");
     if (!block) return;
@@ -539,6 +655,7 @@
     var unit = settings().unit;
     if (field === "exerciseId") {
       draft.sets[idx].exerciseId = t.value;
+      paintLog(root);
     } else if (field === "load") {
       draft.sets[idx].loadKg = displayToKg(t.value, unit);
     } else if (field === "reps") {
@@ -547,6 +664,10 @@
     } else if (field === "rpe") {
       var rpe = t.value === "" ? null : Number(t.value);
       draft.sets[idx].rpe = rpe != null && !isNaN(rpe) ? rpe : null;
+    } else if (field === "section-note") {
+      ensureNotes(draft);
+      var exId = draft.sets[idx].exerciseId;
+      if (exId) draft.sectionNotes[exId] = t.value || "";
     }
   }
 
@@ -641,6 +762,7 @@
     if (root.getAttribute("data-sl-log-bound") === "1") return;
     root.setAttribute("data-sl-log-bound", "1");
     root.addEventListener("change", onLogChange);
+    root.addEventListener("input", onLogChange);
     root.addEventListener("click", onLogClick);
   }
 
@@ -666,14 +788,21 @@
 
   function syncAllFromDom(root) {
     if (!draft || !root) return;
+    ensureNotes(draft);
     var dateEl = root.querySelector("#log-date");
     var bwEl = root.querySelector("#log-bw");
+    var noteEl = root.querySelector("#log-session-note");
     if (dateEl) draft.dateISO = dateEl.value || todayISO();
     if (bwEl) draft.bodyweightKg = displayToKg(bwEl.value, settings().unit);
+    if (noteEl) draft.note = noteEl.value || "";
     var blocks = root.querySelectorAll("[data-set-idx]");
     for (var i = 0; i < blocks.length; i++) {
       var idx = Number(blocks[i].getAttribute("data-set-idx"));
       syncSetFromDom(blocks[i], idx);
+      var ta = blocks[i].querySelector('[data-field="section-note"]');
+      if (ta && draft.sets[idx] && draft.sets[idx].exerciseId) {
+        draft.sectionNotes[draft.sets[idx].exerciseId] = ta.value || "";
+      }
     }
   }
 
@@ -706,10 +835,19 @@
       return;
     }
 
+    ensureNotes(draft);
+    var sectionNotes = {};
+    for (var j = 0; j < outSets.length; j++) {
+      var eid = outSets[j].exerciseId;
+      if (eid && draft.sectionNotes[eid]) sectionNotes[eid] = draft.sectionNotes[eid];
+    }
+
     var sess = {
       id: draft.id || uid(),
       dateISO: draft.dateISO || todayISO(),
       bodyweightKg: draft.bodyweightKg,
+      note: draft.note || "",
+      sectionNotes: sectionNotes,
       sets: outSets,
     };
     if (draft.programId) sess.programId = draft.programId;
@@ -722,6 +860,7 @@
     if (draft.intensiveLoadKg != null) sess.intensiveLoadKg = draft.intensiveLoadKg;
 
     SL.store.upsertSession(sess);
+    calSelectedISO = sess.dateISO;
 
     if (draft.bodyweightKg != null) {
       var data = SL.store.get();
@@ -807,6 +946,10 @@
             esc(draft.dayName) +
             "</strong></p>"
           : "") +
+        '<label class="field"><span class="lbl">Session note</span>' +
+        '<textarea id="log-session-note" rows="3" placeholder="Your opinion on this session overall">' +
+        esc(draft.note || "") +
+        "</textarea></label>" +
         "</div>" +
         '<div class="card">' +
         "<h2>Sets</h2>" +
@@ -889,6 +1032,39 @@
         paintHistory(root);
         return;
       }
+      if (action === "cal-prev") {
+        ensureCalMonth();
+        calMonth.m -= 1;
+        if (calMonth.m < 0) {
+          calMonth.m = 11;
+          calMonth.y -= 1;
+        }
+        paintHistory(root);
+        return;
+      }
+      if (action === "cal-next") {
+        ensureCalMonth();
+        calMonth.m += 1;
+        if (calMonth.m > 11) {
+          calMonth.m = 0;
+          calMonth.y += 1;
+        }
+        paintHistory(root);
+        return;
+      }
+      if (action === "cal-day") {
+        var dayIso = actionBtn.getAttribute("data-date");
+        if (!dayIso) return;
+        calSelectedISO = dayIso;
+        historyDetailId = null;
+        paintHistory(root);
+        return;
+      }
+      if (action === "save-notes") {
+        var sid = actionBtn.getAttribute("data-session-id") || historyDetailId;
+        saveHistoryNotes(root, sid);
+        return;
+      }
       if (action === "edit") {
         var editId = actionBtn.getAttribute("data-session-id") || historyDetailId;
         var sessions = SL.store.listSessions() || [];
@@ -923,48 +1099,155 @@
     }
   }
 
+  function saveHistoryNotes(root, sessionId) {
+    if (!sessionId) return;
+    var sessions = SL.store.listSessions() || [];
+    var sess = null;
+    for (var i = 0; i < sessions.length; i++) {
+      if (sessions[i].id === sessionId) {
+        sess = sessions[i];
+        break;
+      }
+    }
+    if (!sess) return;
+
+    var noteEl = root.querySelector("#hist-session-note");
+    sess.note = noteEl ? noteEl.value || "" : sess.note || "";
+    sess.sectionNotes = sess.sectionNotes && typeof sess.sectionNotes === "object" ? sess.sectionNotes : {};
+    var areas = root.querySelectorAll("[data-hist-section-note]");
+    for (var j = 0; j < areas.length; j++) {
+      var ex = areas[j].getAttribute("data-hist-section-note");
+      if (ex) sess.sectionNotes[ex] = areas[j].value || "";
+    }
+    SL.store.upsertSession(sess);
+    var toast = document.createElement("div");
+    toast.className = "toast";
+    toast.textContent = "Notes saved";
+    document.body.appendChild(toast);
+    setTimeout(function () {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 1600);
+  }
+
   function bindHistory(root) {
     if (root.getAttribute("data-sl-hist-bound") === "1") return;
     root.setAttribute("data-sl-hist-bound", "1");
     root.addEventListener("click", onHistoryClick);
   }
 
+  function renderCalendarHtml(byDate) {
+    var cm = ensureCalMonth();
+    var y = cm.y;
+    var m = cm.m;
+    var first = new Date(y, m, 1);
+    var startPad = (first.getDay() + 6) % 7; // Monday-first
+    var daysInMonth = new Date(y, m + 1, 0).getDate();
+    var today = todayISO();
+    if (!calSelectedISO) calSelectedISO = today;
+
+    var html =
+      '<div class="card cal-card">' +
+      '<div class="cal-head">' +
+      '<button type="button" class="icon-btn" data-hist-action="cal-prev" aria-label="Previous month">&#8249;</button>' +
+      "<h2>" +
+      esc(monthLabel(y, m)) +
+      "</h2>" +
+      '<button type="button" class="icon-btn" data-hist-action="cal-next" aria-label="Next month">&#8250;</button>' +
+      "</div>" +
+      '<div class="cal-grid" role="grid" aria-label="Training calendar">';
+
+    var dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    for (var d = 0; d < dows.length; d++) {
+      html += '<div class="cal-dow">' + dows[d] + "</div>";
+    }
+    for (var p = 0; p < startPad; p++) {
+      html += '<div class="cal-day empty" aria-hidden="true"></div>';
+    }
+    for (var day = 1; day <= daysInMonth; day++) {
+      var iso = isoFromYMD(y, m, day);
+      var count = byDate[iso] ? byDate[iso].length : 0;
+      var cls = "cal-day";
+      if (count) cls += " has-session";
+      if (iso === calSelectedISO) cls += " selected";
+      if (iso === today) cls += " today";
+      html +=
+        '<button type="button" class="' +
+        cls +
+        '" data-hist-action="cal-day" data-date="' +
+        esc(iso) +
+        '" aria-label="' +
+        esc(iso) +
+        (count ? ", " + count + " session" + (count > 1 ? "s" : "") : "") +
+        '">' +
+        '<span class="cal-num">' +
+        day +
+        "</span>" +
+        (count ? '<span class="cal-dot" aria-hidden="true"></span>' : "") +
+        "</button>";
+    }
+    html += "</div></div>";
+    return html;
+  }
+
   function renderHistoryList(root, exercises) {
     var names = nameMap(exercises);
     var unit = settings().unit;
+    var byDate = sessionsByDate();
     var sessions = SL.store.listSessions() || [];
 
     root.setAttribute("data-sl-view", "history");
     bindHistory(root);
 
-    if (!sessions.length) {
-        root.innerHTML =
-        '<div class="empty"><p class="title">No sessions yet</p>' +
-        "<p>Complete a workout to build history here.</p>" +
-        '<div class="actions"><button type="button" class="btn btn-primary" data-hist-action="goto-log">Start workout</button></div></div>';
-      return;
-    }
+    if (!calSelectedISO) calSelectedISO = todayISO();
+    var daySessions = byDate[calSelectedISO] || [];
 
-    var html = '<div class="stack">';
-    for (var i = 0; i < sessions.length; i++) {
-      var sess = sessions[i];
-      var bw =
-        sess.bodyweightKg != null ? fmtWeight(sess.bodyweightKg, unit) : "—";
+    var html = '<div class="stack stack-lg">' + renderCalendarHtml(byDate);
+
+    html +=
+      '<div class="card"><h2 class="card-title">'+
+      esc(calSelectedISO) +
+      "</h2>";
+
+    if (!sessions.length) {
       html +=
-        '<button type="button" class="list-item session-card" data-session-id="' +
-        esc(sess.id) +
-        '">' +
-        '<div class="name">' +
-        esc(sess.dateISO || "Session") +
-        '<div class="muted small">' +
-        esc(sessionSummary(sess, names, unit)) +
-        "</div></div>" +
-        '<div class="meta">' +
-        esc(bw) +
-        '<br /><span class="chev">›</span></div>' +
-        "</button>";
+        '<p class="muted">No sessions yet. Complete a workout to fill the calendar.</p>' +
+        '<button type="button" class="btn btn-primary block" data-hist-action="goto-log">Start workout</button>';
+    } else if (!daySessions.length) {
+      html += '<p class="muted">Nothing logged this day.</p>';
+    } else {
+      html += '<div class="stack">';
+      for (var i = 0; i < daySessions.length; i++) {
+        var sess = daySessions[i];
+        var bw =
+          sess.bodyweightKg != null ? fmtWeight(sess.bodyweightKg, unit) : "—";
+        var hasNotes = !!(sess.note && String(sess.note).trim());
+        if (!hasNotes && sess.sectionNotes) {
+          for (var nk in sess.sectionNotes) {
+            if (
+              Object.prototype.hasOwnProperty.call(sess.sectionNotes, nk) &&
+              sess.sectionNotes[nk] &&
+              String(sess.sectionNotes[nk]).trim()
+            ) {
+              hasNotes = true;
+              break;
+            }
+          }
+        }
+        html +=
+          '<button type="button" class="list-item session-card" data-session-id="' +
+          esc(sess.id) +
+          '">' +
+          '<div class="name">' +
+          esc(sessionSummary(sess, names, unit)) +
+          '<div class="muted small">' +
+          esc(hasNotes ? "Has notes · " + bw : bw) +
+          "</div></div>" +
+          '<span class="chev">›</span>' +
+          "</button>";
+      }
+      html += "</div>";
     }
-    html += "</div>";
+    html += "</div></div>";
     root.innerHTML = html;
   }
 
@@ -986,20 +1269,49 @@
       return;
     }
 
-    var rows = "";
+    if (sess.dateISO) calSelectedISO = sess.dateISO;
+    var parsed = parseISODate(sess.dateISO);
+    if (parsed) calMonth = { y: parsed.y, m: parsed.m };
+
+    var sectionNotes =
+      sess.sectionNotes && typeof sess.sectionNotes === "object" ? sess.sectionNotes : {};
     var sets = sess.sets || [];
-    for (var j = 0; j < sets.length; j++) {
-      var set = sets[j];
-      rows +=
-        "<tr><td>" +
-        esc(names[set.exerciseId] || set.exerciseId || "—") +
-        "</td><td>" +
-        esc(fmtWeight(set.loadKg, unit)) +
-        "</td><td>" +
-        esc(set.reps != null ? set.reps : "—") +
-        "</td><td>" +
-        esc(set.rpe != null ? set.rpe : "—") +
-        "</td></tr>";
+    var exIds = uniqueExerciseIds(sets);
+
+    var sectionsHtml = "";
+    for (var e = 0; e < exIds.length; e++) {
+      var exId = exIds[e];
+      var exRows = "";
+      var n = 0;
+      for (var j = 0; j < sets.length; j++) {
+        var set = sets[j];
+        if (set.exerciseId !== exId) continue;
+        n += 1;
+        exRows +=
+          "<tr><td>" +
+          n +
+          "</td><td>" +
+          esc(fmtWeight(set.loadKg, unit)) +
+          "</td><td>" +
+          esc(set.reps != null ? set.reps : "—") +
+          "</td><td>" +
+          esc(set.rpe != null ? set.rpe : "—") +
+          "</td></tr>";
+      }
+      sectionsHtml +=
+        '<div class="card section-card">' +
+        "<h2>" +
+        esc(names[exId] || exId) +
+        "</h2>" +
+        '<table class="detail-set-table"><thead><tr><th>#</th><th>Load</th><th>Reps</th><th>RPE</th></tr></thead><tbody>' +
+        exRows +
+        "</tbody></table>" +
+        '<label class="field section-note"><span class="lbl">Your note</span>' +
+        '<textarea data-hist-section-note="' +
+        esc(exId) +
+        '" rows="3" placeholder="Personal opinion on this section">' +
+        esc(sectionNotes[exId] || "") +
+        "</textarea></label></div>";
     }
 
     root.setAttribute("data-sl-view", "history");
@@ -1007,7 +1319,7 @@
 
     root.innerHTML =
       '<div class="stack stack-lg">' +
-      '<button type="button" class="btn sm" data-hist-action="back">Back</button>' +
+      '<button type="button" class="btn sm" data-hist-action="back">Back to calendar</button>' +
       '<div class="card">' +
       '<div class="card-head"><div class="date">' +
       esc(sess.dateISO || "") +
@@ -1015,16 +1327,19 @@
       '<span class="muted">' +
       esc(sess.bodyweightKg != null ? fmtWeight(sess.bodyweightKg, unit) : "bw —") +
       "</span></div>" +
-      (sets.length
-        ? '<table class="detail-set-table"><thead><tr><th>Exercise</th><th>Load</th><th>Reps</th><th>RPE</th></tr></thead><tbody>' +
-          rows +
-          "</tbody></table>"
-        : '<p class="muted">No sets logged.</p>') +
+      '<label class="field"><span class="lbl">Session note</span>' +
+      '<textarea id="hist-session-note" rows="3" placeholder="Your opinion on this session overall">' +
+      esc(sess.note || "") +
+      "</textarea></label>" +
       "</div>" +
+      (sectionsHtml || '<div class="card"><p class="muted">No sets logged.</p></div>') +
       '<div class="stack">' +
-      '<button type="button" class="btn btn-primary block" data-hist-action="edit" data-session-id="' +
+      '<button type="button" class="btn btn-primary block" data-hist-action="save-notes" data-session-id="' +
       esc(sess.id) +
-      '">Edit in Log</button>' +
+      '">Save notes</button>' +
+      '<button type="button" class="btn block" data-hist-action="edit" data-session-id="' +
+      esc(sess.id) +
+      '">Edit sets in Log</button>' +
       '<button type="button" class="btn btn-danger block" data-hist-action="delete" data-session-id="' +
       esc(sess.id) +
       '">Delete session</button>' +
@@ -1042,6 +1357,7 @@
 
   function renderHistory(root, opts) {
     if (opts && opts.sessionId) historyDetailId = opts.sessionId;
+    ensureCalMonth();
     paintHistory(root);
   }
 

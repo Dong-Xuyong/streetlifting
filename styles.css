@@ -1083,6 +1083,131 @@ hr.sep {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Calendar (History) ---------- */
+.cal-card {
+  padding-bottom: 12px;
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cal-head h2 {
+  flex: 1;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-dow {
+  text-align: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 4px 0 6px;
+}
+
+.cal-day {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+}
+
+.cal-day.empty {
+  cursor: default;
+  pointer-events: none;
+}
+
+.cal-day.today {
+  border-color: var(--border);
+}
+
+.cal-day.has-session {
+  background: var(--accent-soft);
+}
+
+.cal-day.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.cal-day:active:not(.empty) {
+  opacity: 0.85;
+}
+
+.cal-num {
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.cal-day.selected .cal-dot {
+  background: var(--accent);
+}
+
+/* ---------- Session / section notes ---------- */
+.section-note {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.section-note textarea,
+#log-session-note,
+#hist-session-note {
+  min-height: 72px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.section-card h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.card-title {
+  margin-bottom: 12px;
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .load-hero {
