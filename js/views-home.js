@@ -88,11 +88,38 @@
     return days[(idx + 1) % days.length];
   }
 
-  function startWorkout() {
+  function startWorkout(extra) {
     SL.pendingStart = true;
-    if (typeof SL.navigate === "function") {
-      SL.navigate("log", { startFromProgram: true });
+    var opts = { startFromProgram: true };
+    if (extra && typeof extra === "object") {
+      if (extra.waveDay) opts.waveDay = extra.waveDay;
+      if (extra.programId) opts.programId = extra.programId;
     }
+    if (typeof SL.navigate === "function") {
+      SL.navigate("log", opts);
+    }
+  }
+
+  function renderProgramPicker(programs, activeId) {
+    if (!programs || programs.length < 2) return "";
+    var html =
+      '<div class="card"><h2>Start program</h2>' +
+      '<p class="muted small" style="margin:0 0 10px">Choose which program Home and Start workout use.</p>';
+    for (var i = 0; i < programs.length; i++) {
+      var p = programs[i];
+      var isActive = p.id === activeId || (!!p.active && !activeId);
+      html +=
+        '<button type="button" class="btn block' +
+        (isActive ? "" : " secondary") +
+        '" style="margin-bottom:8px" data-action="select-program" data-id="' +
+        esc(p.id) +
+        '">' +
+        esc(p.name || "Program") +
+        (isActive ? " · active" : "") +
+        "</button>";
+    }
+    html += "</div>";
+    return html;
   }
 
   /** Primary belt-load artifact for the home hero. */
@@ -248,7 +275,9 @@
     );
   }
 
-  function renderPullupWaveHome(program, session, unit) {
+  function renderPullupWaveHome(program, intensive, volume, selected, unit) {
+    var session =
+      selected === "volume" ? volume : intensive || volume;
     if (!session) {
       return (
         renderLoadHero({
@@ -275,6 +304,18 @@
       });
     }
 
+    var dayPick =
+      '<div class="card" style="margin-top:10px"><h2 style="margin:0 0 8px">Day type</h2>' +
+      '<p class="muted small" style="margin:0 0 10px">Choose Intensive or Volume before starting.</p>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<button type="button" class="btn' +
+      (selected === "intensive" ? "" : " secondary") +
+      '" data-action="pick-wave-day" data-wave="intensive">Intensive</button>' +
+      '<button type="button" class="btn' +
+      (selected === "volume" ? "" : " secondary") +
+      '" data-action="pick-wave-day" data-wave="volume">Volume</button>' +
+      "</div></div>";
+
     return (
       renderLoadHero({
         num: num,
@@ -282,7 +323,9 @@
         eyebrow: "Next load",
         lift: "Pull-up",
         meta: session.name || "Wave session",
+        ctaAction: "start-wave",
       }) +
+      dayPick +
       renderDayCard("Session", program.name || "Pull-up wave", rows, "View")
     );
   }
@@ -388,11 +431,19 @@
     var data = SL.store.get();
     var settings = data.settings || {};
     var unit = unitLabel(settings);
+    var programs = SL.store.listPrograms() || [];
     var program = SL.store.getActiveProgram();
     var names = exerciseNameMap();
+    var waveSelected =
+      program &&
+      program.kind === "pullup_wave" &&
+      (program.nextWaveDay === "volume" || program.nextWaveDay === "intensive")
+        ? program.nextWaveDay
+        : null;
 
     function finish(programHtml) {
       root.innerHTML =
+        renderProgramPicker(programs, program && program.id) +
         programHtml +
         renderBodyweightMeta(settings, unit) +
         renderPrs(unit);
@@ -406,7 +457,36 @@
         if (action === "goto-program") {
           SL.navigate("program");
         } else if (action === "start-workout") {
-          startWorkout();
+          startWorkout({ programId: program && program.id });
+        } else if (action === "start-wave") {
+          var pick = root.querySelector(
+            '[data-action="pick-wave-day"]:not(.secondary)'
+          );
+          var day =
+            (pick && pick.getAttribute("data-wave")) ||
+            (program && program.nextWaveDay) ||
+            waveSelected ||
+            "intensive";
+          if (program && program.id) {
+            SL.store.setPullupNextWaveDay(
+              program.id,
+              day === "volume" ? "volume" : "intensive"
+            );
+          }
+          startWorkout({
+            programId: program && program.id,
+            waveDay: day === "volume" ? "volume" : "intensive",
+          });
+        } else if (action === "pick-wave-day") {
+          var wave = btn.getAttribute("data-wave");
+          if (!program || !wave) return;
+          SL.store.setPullupNextWaveDay(program.id, wave);
+          paint(root);
+        } else if (action === "select-program") {
+          var id = btn.getAttribute("data-id");
+          if (!id) return;
+          SL.store.setActiveProgram(id);
+          paint(root);
         }
       };
     }
@@ -458,12 +538,28 @@
         .loadPullupWaveScheme()
         .then(function (scheme) {
           if (!root.isConnected) return;
-          var session = SL.store.currentPullupWaveSession(
+          var intensive = SL.store.currentPullupWaveSession(
+            program,
+            scheme,
+            "intensive"
+          );
+          var volume = SL.store.currentPullupWaveSession(
+            program,
+            scheme,
+            "volume"
+          );
+          var suggested = SL.store.currentPullupWaveSession(
             program,
             scheme,
             "next"
           );
-          finish(renderPullupWaveHome(program, session, unit));
+          var selected =
+            waveSelected ||
+            (suggested && suggested.waveDay) ||
+            "intensive";
+          finish(
+            renderPullupWaveHome(program, intensive, volume, selected, unit)
+          );
         })
         .catch(function () {
           if (!root.isConnected) return;

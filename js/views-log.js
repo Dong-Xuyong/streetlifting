@@ -383,6 +383,9 @@
     }
 
     if (shouldPrefill(opts) || !draft) {
+      if (opts && opts.programId) {
+        SL.store.setActiveProgram(opts.programId);
+      }
       var program = SL.store.getActiveProgram();
 
       if (shouldPrefill(opts) && program && program.kind === "percent_cycle") {
@@ -407,10 +410,17 @@
 
       if (shouldPrefill(opts) && program && program.kind === "pullup_wave") {
         SL.pendingStart = false;
+        var which =
+          opts && (opts.waveDay === "intensive" || opts.waveDay === "volume")
+            ? opts.waveDay
+            : "next";
         SL.store
           .loadPullupWaveScheme()
           .then(function (scheme) {
-            var session = SL.store.currentPullupWaveSession(program, scheme, "next");
+            if (which === "intensive" || which === "volume") {
+              SL.store.setPullupNextWaveDay(program.id, which);
+            }
+            var session = SL.store.currentPullupWaveSession(program, scheme, which);
             draft = session
               ? draftFromPullupWaveSession(program, session)
               : emptyDraft();
@@ -729,6 +739,26 @@
       return;
     }
 
+    if (action === "pick-wave-day") {
+      var wave = btn.getAttribute("data-wave");
+      var activeProg = SL.store.getActiveProgram();
+      if (
+        !activeProg ||
+        activeProg.kind !== "pullup_wave" ||
+        (wave !== "intensive" && wave !== "volume")
+      ) {
+        return;
+      }
+      SL.store.setPullupNextWaveDay(activeProg.id, wave);
+      SL.pendingStart = true;
+      draft = null;
+      root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
+      ensureDraft({ startFromProgram: true, waveDay: wave }, function () {
+        if (root.isConnected) paintLog(root);
+      });
+      return;
+    }
+
     var block = btn.closest("[data-set-idx]");
     if (!block) return;
     var idx = Number(block.getAttribute("data-set-idx"));
@@ -862,6 +892,10 @@
     SL.store.upsertSession(sess);
     calSelectedISO = sess.dateISO;
 
+    if (sess.programId && sess.waveDay) {
+      SL.store.clearPullupNextWaveDay(sess.programId, sess.waveDay);
+    }
+
     if (draft.bodyweightKg != null) {
       var data = SL.store.get();
       data.settings = data.settings || {};
@@ -904,7 +938,15 @@
         linkHtml =
           '<p class="muted small">Linked to <strong>' +
           esc(draft.dayName || "pull-up wave session") +
-          "</strong></p>";
+          "</strong></p>" +
+          '<div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0">' +
+          '<button type="button" class="btn sm' +
+          (draft.waveDay === "intensive" ? "" : " secondary") +
+          '" data-action="pick-wave-day" data-wave="intensive">Intensive</button>' +
+          '<button type="button" class="btn sm' +
+          (draft.waveDay === "volume" ? "" : " secondary") +
+          '" data-action="pick-wave-day" data-wave="volume">Volume</button>' +
+          "</div>";
       } else if (program && day) {
         linkHtml =
           '<label class="field row" style="align-items:center;gap:10px">' +
@@ -991,6 +1033,23 @@
     ) {
       root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
       ensureDraft(opts || null, function () {
+        if (root.isConnected) paintLog(root);
+      });
+      return;
+    }
+    // Prefer explicit waveDay from Home even when a draft already exists
+    if (
+      starting &&
+      program &&
+      program.kind === "pullup_wave" &&
+      opts &&
+      (opts.waveDay === "intensive" || opts.waveDay === "volume") &&
+      draft &&
+      draft.waveDay !== opts.waveDay
+    ) {
+      root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
+      draft = null;
+      ensureDraft(opts, function () {
         if (root.isConnected) paintLog(root);
       });
       return;

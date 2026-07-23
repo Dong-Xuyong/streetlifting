@@ -366,6 +366,7 @@
           intensiveLoadKg: startKg,
           phaseIndex: 0,
           microStepKg: 2.5,
+          nextWaveDay: "intensive",
           schemeId: (scheme && scheme.id) || "pullup-wave",
           days: [],
         };
@@ -449,20 +450,50 @@
       }
       if (next) {
         html +=
-          '<p class="muted small" style="margin:10px 0">Next session: <strong>' +
+          '<p class="muted small" style="margin:10px 0">Suggested next: <strong>' +
           esc(next.name) +
           "</strong></p>";
       }
 
+      var prefer =
+        program.nextWaveDay === "volume"
+          ? "volume"
+          : program.nextWaveDay === "intensive"
+            ? "intensive"
+            : next
+              ? next.waveDay
+              : "intensive";
+
+      html += '<div class="card" style="margin-top:10px">';
+      html += "<h3 style=\"margin:0 0 8px\">Start day</h3>";
+      html +=
+        '<p class="muted small" style="margin:0 0 10px">Pick Intensive or Volume for the next workout. New micro/macro always defaults to Intensive.</p>';
+      html += '<div class="row" style="gap:8px;flex-wrap:wrap">';
+      html +=
+        '<button type="button" class="btn' +
+        (prefer === "intensive" ? "" : " secondary") +
+        '" id="pullup-prefer-intensive">Intensive</button>';
+      html +=
+        '<button type="button" class="btn' +
+        (prefer === "volume" ? "" : " secondary") +
+        '" id="pullup-prefer-volume">Volume</button>';
+      html += "</div></div>";
+
       html += '<div class="stack" style="margin-top:12px">';
       html +=
         '<button type="button" class="btn block" id="pullup-micro">Next micro (+2.5 kg)</button>';
+      html +=
+        '<button type="button" class="btn block secondary" id="pullup-micro-back">Previous micro (−2.5 kg)</button>';
       if (!atPeak) {
         html +=
           '<button type="button" class="btn block secondary" id="pullup-macro">End micro / next macro (drop reps)</button>';
       } else {
         html +=
           '<p class="muted small">At final phase 3×3 — keep micro (+2.5 kg) or start a new cycle.</p>';
+      }
+      if (idx > 0) {
+        html +=
+          '<button type="button" class="btn block secondary" id="pullup-macro-back">Previous macro (raise reps)</button>';
       }
       html += "</div>";
       html += '<div class="row" style="gap:8px;margin-top:14px">';
@@ -485,8 +516,26 @@
           refresh();
         });
       }
+      root.querySelector("#pullup-prefer-intensive").addEventListener("click", function () {
+        SL.store.setPullupNextWaveDay(program.id, "intensive");
+        var updated = getEditingProgram();
+        if (updated) program = updated;
+        paint(scheme);
+      });
+      root.querySelector("#pullup-prefer-volume").addEventListener("click", function () {
+        SL.store.setPullupNextWaveDay(program.id, "volume");
+        var updated = getEditingProgram();
+        if (updated) program = updated;
+        paint(scheme);
+      });
       root.querySelector("#pullup-micro").addEventListener("click", function () {
         SL.store.advancePullupMicro(program.id);
+        var updated = getEditingProgram();
+        if (updated) program = updated;
+        paint(scheme);
+      });
+      root.querySelector("#pullup-micro-back").addEventListener("click", function () {
+        SL.store.retreatPullupMicro(program.id);
         var updated = getEditingProgram();
         if (updated) program = updated;
         paint(scheme);
@@ -502,6 +551,15 @@
             return;
           }
           SL.store.advancePullupMacro(program.id);
+          var updated = getEditingProgram();
+          if (updated) program = updated;
+          paint(scheme);
+        });
+      }
+      var macroBack = root.querySelector("#pullup-macro-back");
+      if (macroBack) {
+        macroBack.addEventListener("click", function () {
+          SL.store.retreatPullupMacro(program.id);
           var updated = getEditingProgram();
           if (updated) program = updated;
           paint(scheme);

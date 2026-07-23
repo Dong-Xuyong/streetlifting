@@ -480,22 +480,60 @@
   }
 
   function lastPullupWaveDay(program) {
-    var logged = listSessions() || [];
-    for (var i = 0; i < logged.length; i++) {
-      var sess = logged[i];
+    // Prefer raw insert order over listSessions date sort: Intensive + Volume
+    // logged the same day must resolve Volume as last, not Intensive.
+    var raw = get().sessions || [];
+    var best = null;
+    var bestDate = "";
+    var bestIdx = -1;
+    for (var i = 0; i < raw.length; i++) {
+      var sess = raw[i];
       if (!sess || sess.programId !== program.id) continue;
-      if (sess.waveDay === "intensive" || sess.waveDay === "volume") {
-        return sess.waveDay;
+      if (sess.waveDay !== "intensive" && sess.waveDay !== "volume") continue;
+      var d = sess.dateISO || "";
+      if (!best || d > bestDate || (d === bestDate && i > bestIdx)) {
+        best = sess.waveDay;
+        bestDate = d;
+        bestIdx = i;
       }
     }
-    return null;
+    return best;
   }
 
   function resolvePullupWaveWhich(program, which) {
     if (which === "intensive" || which === "volume") return which;
+    // Explicit preference after new micro/macro or user pick
+    if (program && (program.nextWaveDay === "intensive" || program.nextWaveDay === "volume")) {
+      return program.nextWaveDay;
+    }
     var last = lastPullupWaveDay(program);
     if (last === "intensive") return "volume";
     return "intensive";
+  }
+
+  function setPullupNextWaveDay(programOrId, waveDay) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!program || program.kind !== "pullup_wave") {
+      throw new Error("Not a pull-up wave program");
+    }
+    if (waveDay !== "intensive" && waveDay !== "volume") {
+      throw new Error("waveDay must be intensive or volume");
+    }
+    program.nextWaveDay = waveDay;
+    upsertProgram(program);
+    return program;
+  }
+
+  function clearPullupNextWaveDay(programOrId, matchedWaveDay) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!program || program.kind !== "pullup_wave") return program;
+    if (matchedWaveDay && program.nextWaveDay !== matchedWaveDay) return program;
+    if (program.nextWaveDay == null) return program;
+    program.nextWaveDay = null;
+    upsertProgram(program);
+    return program;
   }
 
   function currentPullupWaveSession(program, scheme, which) {
@@ -567,6 +605,28 @@
     var cur = Number(program.intensiveLoadKg);
     if (!isFinite(cur)) cur = Number(program.startLoadKg) || 0;
     program.intensiveLoadKg = roundLoadKg(cur + step);
+    program.nextWaveDay = "intensive";
+    upsertProgram(program);
+    return program;
+  }
+
+  function retreatPullupMicro(programOrId) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!program || program.kind !== "pullup_wave") {
+      throw new Error("Not a pull-up wave program");
+    }
+    var step = Number(program.microStepKg);
+    if (!isFinite(step) || step <= 0) step = 2.5;
+    var cur = Number(program.intensiveLoadKg);
+    if (!isFinite(cur)) cur = Number(program.startLoadKg) || 0;
+    var floor = Number(program.startLoadKg);
+    if (!isFinite(floor)) floor = 0;
+    var next = roundLoadKg(cur - step);
+    if (next == null || next < floor) next = roundLoadKg(floor);
+    if (next == null) next = 0;
+    program.intensiveLoadKg = next;
+    program.nextWaveDay = "intensive";
     upsertProgram(program);
     return program;
   }
@@ -584,8 +644,25 @@
       return { program: program, advanced: false, atPeak: true };
     }
     program.phaseIndex = idx + 1;
+    program.nextWaveDay = "intensive";
     upsertProgram(program);
     return { program: program, advanced: true, atPeak: program.phaseIndex >= maxIdx };
+  }
+
+  function retreatPullupMacro(programOrId) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!program || program.kind !== "pullup_wave") {
+      throw new Error("Not a pull-up wave program");
+    }
+    var idx = Number(program.phaseIndex) || 0;
+    if (idx <= 0) {
+      return { program: program, retreated: false, atStart: true };
+    }
+    program.phaseIndex = idx - 1;
+    program.nextWaveDay = "intensive";
+    upsertProgram(program);
+    return { program: program, retreated: true, atStart: program.phaseIndex <= 0 };
   }
 
   window.SL.store = {
@@ -615,8 +692,12 @@
     nextCycleSession: nextCycleSession,
     loadPullupWaveScheme: loadPullupWaveScheme,
     currentPullupWaveSession: currentPullupWaveSession,
+    setPullupNextWaveDay: setPullupNextWaveDay,
+    clearPullupNextWaveDay: clearPullupNextWaveDay,
     advancePullupMicro: advancePullupMicro,
+    retreatPullupMicro: retreatPullupMicro,
     advancePullupMacro: advancePullupMacro,
+    retreatPullupMacro: retreatPullupMacro,
     todayISO: todayISO,
   };
 })();
