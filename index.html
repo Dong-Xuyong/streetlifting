@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Streetlifting</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="back-btn" class="icon-btn hidden" type="button" aria-label="Back">&#8592;</button>
+      <h1 id="topbar-title">Streetlifting</h1>
+      <span id="topbar-meta"></span>
+    </header>
+
+    <main id="view-root"></main>
+
+    <nav id="tabbar" aria-label="Main">
+      <button type="button" data-tab="home" class="tab active"><span class="tab-icon" aria-hidden="true">&#8962;</span>Home</button>
+      <button type="button" data-tab="log" class="tab"><span class="tab-icon" aria-hidden="true">&#43;</span>Log</button>
+      <button type="button" data-tab="history" class="tab"><span class="tab-icon" aria-hidden="true">&#9776;</span>Hist</button>
+      <button type="button" data-tab="analytics" class="tab"><span class="tab-icon" aria-hidden="true">&#9636;</span>Stats</button>
+      <button type="button" data-tab="program" class="tab"><span class="tab-icon" aria-hidden="true">&#9635;</span>Prog</button>
+      <button type="button" data-tab="exercises" class="tab"><span class="tab-icon" aria-hidden="true">&#9733;</span>Ex</button>
+      <button type="button" data-tab="settings" class="tab"><span class="tab-icon" aria-hidden="true">&#9881;</span>Set</button>
+    </nav>
+  </div>
+
+  <script src="js/store.js"></script>
+  <script src="js/timer.js"></script>
+  <script src="js/views-home.js"></script>
+  <script src="js/views-exercises.js"></script>
+  <script src="js/views-program.js"></script>
+  <script src="js/views-log.js"></script>
+  <script src="js/views-analytics.js"></script>
+  <script src="js/views-settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
