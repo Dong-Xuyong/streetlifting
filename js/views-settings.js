@@ -154,6 +154,47 @@
     URL.revokeObjectURL(url);
   }
 
+  function backupCounts() {
+    if (SL.store && typeof SL.store.backupCounts === "function") {
+      return SL.store.backupCounts();
+    }
+    const s = SL.store.get();
+    return {
+      programs: (s.programs || []).length,
+      sessions: (s.sessions || []).length,
+      customExercises: (s.customExercises || []).length,
+    };
+  }
+
+  function formatBackupSummary(counts) {
+    const c = counts || {};
+    const programs = c.programs || 0;
+    const sessions = c.sessions || 0;
+    const custom = c.customExercises || 0;
+    const parts = [
+      programs === 1 ? "1 program" : `${programs} programs`,
+      sessions === 1 ? "1 workout" : `${sessions} workouts`,
+    ];
+    if (custom) {
+      parts.push(custom === 1 ? "1 custom exercise" : `${custom} custom exercises`);
+    }
+    return parts.join(", ");
+  }
+
+  function confirmImport(counts) {
+    const summary = formatBackupSummary(counts);
+    return window.confirm(
+      `Replace all data on this device with this backup?\n\n${summary}\n\nPrograms and workout history will be restored. Current data will be overwritten.`
+    );
+  }
+
+  function runImport(raw) {
+    const result = SL.store.importJson(raw);
+    const counts = (result && result.counts) || backupCounts();
+    toast("Imported " + formatBackupSummary(counts));
+    SL.refresh();
+  }
+
   function bind(root) {
     const unit = getSettings().unit || "kg";
 
@@ -227,8 +268,9 @@
     if (exportBtn) {
       exportBtn.addEventListener("click", () => {
         try {
+          const counts = backupCounts();
           downloadJson(SL.store.exportJson());
-          toast("Export ready");
+          toast("Exported " + formatBackupSummary(counts));
         } catch (err) {
           toast("Export failed");
         }
@@ -245,9 +287,16 @@
           return;
         }
         try {
-          SL.store.importJson(raw);
-          toast("Import complete");
-          SL.refresh();
+          const preview = JSON.parse(raw);
+          const counts = {
+            programs: Array.isArray(preview.programs) ? preview.programs.length : 0,
+            sessions: Array.isArray(preview.sessions) ? preview.sessions.length : 0,
+            customExercises: Array.isArray(preview.customExercises)
+              ? preview.customExercises.length
+              : 0,
+          };
+          if (!confirmImport(counts)) return;
+          runImport(raw);
         } catch (err) {
           toast("Import failed — check JSON");
         }
@@ -262,11 +311,24 @@
         const reader = new FileReader();
         reader.onload = () => {
           try {
-            SL.store.importJson(String(reader.result || ""));
-            toast("Import complete");
-            SL.refresh();
+            const raw = String(reader.result || "");
+            const preview = JSON.parse(raw);
+            const counts = {
+              programs: Array.isArray(preview.programs) ? preview.programs.length : 0,
+              sessions: Array.isArray(preview.sessions) ? preview.sessions.length : 0,
+              customExercises: Array.isArray(preview.customExercises)
+                ? preview.customExercises.length
+                : 0,
+            };
+            if (!confirmImport(counts)) {
+              fileInput.value = "";
+              return;
+            }
+            runImport(raw);
           } catch (err) {
             toast("Import failed — check JSON");
+          } finally {
+            fileInput.value = "";
           }
         };
         reader.onerror = () => toast("Could not read file");
@@ -300,6 +362,8 @@
       const bwDisplay = kgToDisplay(s.bodyweightKg, unit);
       const unitLabel = unit === "lb" ? "lb" : "kg";
       const plateList = PLATES.join(" · ");
+      const counts = backupCounts();
+      const backupSummary = formatBackupSummary(counts);
 
       rootEl.innerHTML = `
         <div class="card">
@@ -340,18 +404,21 @@
 
         <div class="card">
           <h2>Backup</h2>
-          <p class="muted small" style="margin-bottom:12px">Take a copy before you wipe or switch devices.</p>
-          <button type="button" class="btn block" id="export-json">Export JSON</button>
+          <p class="muted small" style="margin-bottom:8px">
+            Full backup: programs, workout history, custom exercises, and settings.
+          </p>
+          <p class="muted small" style="margin-bottom:12px">On this device: ${esc(backupSummary)}.</p>
+          <button type="button" class="btn block" id="export-json">Export backup</button>
           <hr class="weld" />
           <label class="field">
             <span class="lbl">Import from file</span>
             <input id="import-file" type="file" accept="application/json,.json" />
           </label>
           <label class="field">
-            <span class="lbl">Or paste JSON</span>
-            <textarea id="import-text" rows="5" placeholder='{"settings":...}'></textarea>
+            <span class="lbl">Or paste backup JSON</span>
+            <textarea id="import-text" rows="5" placeholder='{"version":1,"programs":[],"sessions":[],...}'></textarea>
           </label>
-          <button type="button" class="btn secondary block" id="import-json">Import JSON</button>
+          <button type="button" class="btn secondary block" id="import-json">Import backup</button>
         </div>
 
         <div class="card">

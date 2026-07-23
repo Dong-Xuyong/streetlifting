@@ -318,8 +318,41 @@
     save();
   }
 
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function backupCounts(data) {
+    var s = isPlainObject(data) ? data : get();
+    return {
+      programs: Array.isArray(s.programs) ? s.programs.length : 0,
+      sessions: Array.isArray(s.sessions) ? s.sessions.length : 0,
+      customExercises: Array.isArray(s.customExercises) ? s.customExercises.length : 0,
+    };
+  }
+
+  /** Full backup: settings, custom exercises, programs, and workout history (sessions). */
   function exportJson() {
-    return JSON.stringify(get(), null, 2);
+    var s = get();
+    var programs = cloneJson(s.programs || []);
+    var sessions = cloneJson(s.sessions || []);
+    sessions.sort(function (a, b) {
+      var da = (a && a.dateISO) || "";
+      var db = (b && b.dateISO) || "";
+      if (da < db) return -1;
+      if (da > db) return 1;
+      return 0;
+    });
+    var payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: cloneJson(s.settings),
+      customExercises: cloneJson(s.customExercises || []),
+      programs: programs,
+      sessions: sessions,
+    };
+    payload.counts = backupCounts(payload);
+    return JSON.stringify(payload, null, 2);
   }
 
   function importJson(str) {
@@ -335,9 +368,13 @@
     if (!validateStore(parsed)) {
       throw new Error("Invalid store shape");
     }
+    // Accept v1 backups and legacy flat store blobs (both carry programs + sessions).
     state = normalizeLoaded(parsed);
     save();
-    return state;
+    return {
+      state: state,
+      counts: backupCounts(state),
+    };
   }
 
   function e1rm(bwKg, loadKg, reps) {
@@ -754,6 +791,7 @@
     deleteSession: deleteSession,
     exportJson: exportJson,
     importJson: importJson,
+    backupCounts: backupCounts,
     e1rm: e1rm,
     bestSet: bestSet,
     historyFor: historyFor,

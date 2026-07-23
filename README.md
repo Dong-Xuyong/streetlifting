@@ -12,7 +12,7 @@ Mobile-first streetlifting tracker: programs, session logging, rest timer, analy
 - **Analytics** — e1RM trends, streetlifting total, relative strength, volume, PRs
 - **Program** — multi-day programs with double/linear/manual progression
 - **Exercises** — competition + accessory catalog, custom exercises, cues
-- **Settings** — kg/lb display, session defaults, belt-load plate stack, JSON export/import, wipe
+- **Settings** — kg/lb display, session defaults, belt-load plate stack, full backup export/import (programs + workout history), wipe
 
 Data lives in `localStorage` (`streetlifting-v1`). Built-in exercises come from `data/exercises.json`.
 
