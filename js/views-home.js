@@ -130,6 +130,46 @@
     return html;
   }
 
+  function renderPullupWaveCard(program, session, unit) {
+    var html =
+      '<div class="card">' +
+      "<h2>Program</h2>" +
+      '<div class="spread" style="margin-bottom:12px">' +
+      "<div><strong>" +
+      esc(program.name || "Pull-up wave") +
+      '</strong><div class="muted small">Active · intensive ' +
+      esc(fmtWeight(program.intensiveLoadKg, unit)) +
+      "</div></div>" +
+      '<button type="button" class="btn secondary sm" data-action="goto-program">View</button>' +
+      "</div>";
+
+    if (!session) {
+      html += '<p class="muted">Wave session unavailable.</p></div>';
+      return html;
+    }
+
+    html +=
+      "<h2>Next session</h2>" +
+      '<p style="font-weight:700;margin-bottom:10px">' +
+      esc(session.name) +
+      "</p>";
+
+    var exercises = session.exercises || [];
+    for (var i = 0; i < exercises.length; i++) {
+      var pe = exercises[i];
+      html +=
+        '<div class="pr-row">' +
+        '<div><div class="name">Pull-up</div><div class="sub">' +
+        esc(pe.sets + " × " + pe.reps + " @ " + fmtWeight(pe.loadKg, unit)) +
+        "</div></div></div>";
+    }
+
+    html +=
+      '<button type="button" class="btn block" data-action="start-workout" style="margin-top:14px">Start workout</button>' +
+      "</div>";
+    return html;
+  }
+
   function startWorkout() {
     SL.pendingStart = true;
     if (typeof SL.navigate === "function") {
@@ -301,6 +341,25 @@
           if (!root.isConnected) return;
           finish(
             '<div class="card"><h2>Program</h2><p class="muted">Could not load squat cycle schedule.</p>' +
+              '<button type="button" class="btn block" data-action="goto-program">Open Programs</button></div>'
+          );
+        });
+      return;
+    }
+
+    if (program && program.kind === "pullup_wave") {
+      finish('<div class="card"><p class="muted">Loading pull-up wave…</p></div>');
+      SL.store
+        .loadPullupWaveScheme()
+        .then(function (scheme) {
+          if (!root.isConnected) return;
+          var session = SL.store.currentPullupWaveSession(program, scheme, "next");
+          finish(renderPullupWaveCard(program, session, unit));
+        })
+        .catch(function () {
+          if (!root.isConnected) return;
+          finish(
+            '<div class="card"><h2>Program</h2><p class="muted">Could not load pull-up wave.</p>' +
               '<button type="button" class="btn block" data-action="goto-program">Open Programs</button></div>'
           );
         });

@@ -199,6 +199,46 @@
       week: session ? session.week : null,
       dayNum: session ? session.day : null,
       cycleKey: session ? session.id : null,
+      waveDay: null,
+      phaseIndex: null,
+      intensiveLoadKg: null,
+      sets: sets,
+    };
+  }
+
+  function draftFromPullupWaveSession(program, session) {
+    var s = settings();
+    var sets = [];
+    var exercises = (session && session.exercises) || [];
+    for (var i = 0; i < exercises.length; i++) {
+      var pe = exercises[i];
+      var count = pe.sets != null && pe.sets > 0 ? pe.sets : 1;
+      var repLabel = pe.sets + "×" + pe.reps + " @ " + pe.loadKg + " kg";
+      for (var k = 0; k < count; k++) {
+        sets.push({
+          exerciseId: pe.exerciseId || "pullup",
+          loadKg: pe.loadKg != null ? pe.loadKg : null,
+          reps: pe.reps != null ? pe.reps : null,
+          rpe: null,
+          completed: false,
+          targetLoadKg: pe.loadKg != null ? pe.loadKg : null,
+          targetRepsLabel: repLabel,
+        });
+      }
+    }
+    return {
+      id: uid(),
+      dateISO: todayISO(),
+      bodyweightKg: s.bodyweightKg,
+      programId: program ? program.id : null,
+      dayId: session ? session.id : null,
+      dayName: session ? session.name || null : null,
+      week: null,
+      dayNum: null,
+      cycleKey: session ? session.id : null,
+      waveDay: session ? session.waveDay : null,
+      phaseIndex: session ? session.phaseIndex : null,
+      intensiveLoadKg: session ? session.intensiveLoadKg : null,
       sets: sets,
     };
   }
@@ -256,6 +296,26 @@
             var session = SL.store.nextCycleSession(program, scheme);
             draft = session
               ? draftFromCycleSession(program, session)
+              : emptyDraft();
+            if (done) done(draft);
+            else if (typeof SL.refresh === "function") SL.refresh();
+          })
+          .catch(function () {
+            draft = emptyDraft();
+            if (done) done(draft);
+            else if (typeof SL.refresh === "function") SL.refresh();
+          });
+        return draft;
+      }
+
+      if (shouldPrefill(opts) && program && program.kind === "pullup_wave") {
+        SL.pendingStart = false;
+        SL.store
+          .loadPullupWaveScheme()
+          .then(function (scheme) {
+            var session = SL.store.currentPullupWaveSession(program, scheme, "next");
+            draft = session
+              ? draftFromPullupWaveSession(program, session)
               : emptyDraft();
             if (done) done(draft);
             else if (typeof SL.refresh === "function") SL.refresh();
@@ -533,8 +593,11 @@
       SL.pendingStart = true;
       draft = null;
       var prog = SL.store.getActiveProgram();
-      if (prog && prog.kind === "percent_cycle") {
-        root.innerHTML = '<div class="card"><p class="muted">Loading squat session…</p></div>';
+      if (prog && (prog.kind === "percent_cycle" || prog.kind === "pullup_wave")) {
+        root.innerHTML =
+          '<div class="card"><p class="muted">Loading ' +
+          (prog.kind === "pullup_wave" ? "pull-up" : "squat") +
+          " session…</p></div>";
         ensureDraft({ startFromProgram: true }, function () {
           if (root.isConnected) paintLog(root);
         });
@@ -654,6 +717,9 @@
     if (draft.week != null) sess.week = draft.week;
     if (draft.dayNum != null) sess.day = draft.dayNum;
     if (draft.cycleKey) sess.cycleKey = draft.cycleKey;
+    if (draft.waveDay) sess.waveDay = draft.waveDay;
+    if (draft.phaseIndex != null) sess.phaseIndex = draft.phaseIndex;
+    if (draft.intensiveLoadKg != null) sess.intensiveLoadKg = draft.intensiveLoadKg;
 
     SL.store.upsertSession(sess);
 
@@ -680,8 +746,10 @@
     var unit = s.unit;
     var program = SL.store.getActiveProgram();
     var day =
-      program && program.kind !== "percent_cycle" ? nextProgramDay(program) : null;
-    var linked = !!(draft.programId && (draft.dayId || draft.cycleKey));
+      program && program.kind !== "percent_cycle" && program.kind !== "pullup_wave"
+        ? nextProgramDay(program)
+        : null;
+    var linked = !!(draft.programId && (draft.dayId || draft.cycleKey || draft.waveDay));
 
     SL.store.listExercises().then(function (exercises) {
       if (SL.app && SL.app.currentTab && SL.app.currentTab !== "log") return;
@@ -692,6 +760,11 @@
         linkHtml =
           '<p class="muted small">Linked to <strong>' +
           esc(draft.dayName || "squat cycle session") +
+          "</strong></p>";
+      } else if (program && program.kind === "pullup_wave" && linked) {
+        linkHtml =
+          '<p class="muted small">Linked to <strong>' +
+          esc(draft.dayName || "pull-up wave session") +
           "</strong></p>";
       } else if (program && day) {
         linkHtml =
@@ -753,13 +826,27 @@
 
   function renderLog(root, opts) {
     var program = SL.store.getActiveProgram();
+    var starting =
+      SL.pendingStart || (opts && opts.startFromProgram);
     if (
-      (SL.pendingStart || (opts && opts.startFromProgram)) &&
+      starting &&
       program &&
       program.kind === "percent_cycle" &&
       (!draft || !draft.cycleKey)
     ) {
       root.innerHTML = '<div class="card"><p class="muted">Loading squat session…</p></div>';
+      ensureDraft(opts || null, function () {
+        if (root.isConnected) paintLog(root);
+      });
+      return;
+    }
+    if (
+      starting &&
+      program &&
+      program.kind === "pullup_wave" &&
+      (!draft || !draft.waveDay)
+    ) {
+      root.innerHTML = '<div class="card"><p class="muted">Loading pull-up session…</p></div>';
       ensureDraft(opts || null, function () {
         if (root.isConnected) paintLog(root);
       });

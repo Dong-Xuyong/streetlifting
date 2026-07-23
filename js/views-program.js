@@ -6,12 +6,13 @@
   window.SL.views = window.SL.views || {};
 
   var state = {
-    mode: "list", // list | edit | squat-cycle | squat-schedule
+    mode: "list", // list | edit | squat-cycle | squat-schedule | pullup-wave | pullup-status
     programId: null,
     dayIndex: null, // null = program meta; number = editing that day
     exercises: null,
     exercisesError: null,
     squatScheme: null,
+    pullupScheme: null,
   };
 
   var KG_TO_LB = 2.2046226218;
@@ -190,9 +191,11 @@
         var metaLabel =
           p.kind === "percent_cycle"
             ? "4-week % cycle"
-            : ((p.days && p.days.length) || 0) +
-              " day" +
-              ((p.days && p.days.length) === 1 ? "" : "s");
+            : p.kind === "pullup_wave"
+              ? "Pull-up wave"
+              : ((p.days && p.days.length) || 0) +
+                " day" +
+                ((p.days && p.days.length) === 1 ? "" : "s");
         html += '<div class="session-card" data-action="edit" data-id="' + esc(p.id) + '" style="cursor:default">';
         html += '<div class="head">';
         html += '<span class="date">' + esc(p.name);
@@ -238,6 +241,10 @@
       '<p class="muted" style="margin:16px 0 12px">4-week squat peaking cycle. Enter your target 1RM and the app schedules every session from %.</p>';
     html +=
       '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
+    html +=
+      '<p class="muted" style="margin:16px 0 12px">Pull-up micro/macro wave: start weight, 3×10→3×6→3×3 intensive + matching volume. You advance +2.5 kg or drop reps.</p>';
+    html +=
+      '<button type="button" class="btn block" id="prog-pullup-wave">Pull-up wave cycle</button>';
     html += "</div>";
 
     root.innerHTML = html;
@@ -273,6 +280,12 @@
       refresh();
     });
 
+    root.querySelector("#prog-pullup-wave").addEventListener("click", function () {
+      state.mode = "pullup-wave";
+      state.programId = null;
+      refresh();
+    });
+
     root.querySelectorAll("[data-action]").forEach(function (btn) {
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -293,6 +306,9 @@
           if (prog && prog.kind === "percent_cycle") {
             state.mode = "squat-schedule";
             state.programId = id;
+          } else if (prog && prog.kind === "pullup_wave") {
+            state.mode = "pullup-status";
+            state.programId = id;
           } else {
             state.mode = "edit";
             state.programId = id;
@@ -306,6 +322,211 @@
         }
       });
     });
+  }
+
+  function renderPullupWaveForm(root) {
+    var unit = settingsUnit();
+    var html = '<div class="card">';
+    html += "<h2>Pull-up wave cycle</h2>";
+    html +=
+      '<p class="muted" style="margin-bottom:14px">Starting intensive weight for this cycle. Intensive is always 3 sets (10→6→3 reps). Volume is 6 sets matched to the phase. Advance micro (+2.5 kg) or drop reps when you choose.</p>';
+    html +=
+      '<label class="field"><span class="lbl">Starting intensive weight (' +
+      esc(unit) +
+      ')</span><input type="number" id="pullup-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" /></label>';
+    html += '<div class="row" style="gap:8px;margin-top:8px">';
+    html += '<button type="button" class="btn secondary" id="pullup-cancel">Cancel</button>';
+    html += '<button type="button" class="btn" id="pullup-create">Create &amp; start</button>';
+    html += "</div></div>";
+    root.innerHTML = html;
+
+    root.querySelector("#pullup-cancel").addEventListener("click", function () {
+      state.mode = "list";
+      refresh();
+    });
+
+    root.querySelector("#pullup-create").addEventListener("click", function () {
+      var input = root.querySelector("#pullup-start");
+      var raw = input && input.value;
+      var n = Number(raw);
+      if (!isFinite(n) || n < 0) {
+        if (input) input.focus();
+        return;
+      }
+      var startKg = unit === "lb" ? n / KG_TO_LB : n;
+      startKg = Math.round(startKg * 100) / 100;
+      SL.store.loadPullupWaveScheme().then(function (scheme) {
+        var program = {
+          id: uid(),
+          name: "Pull-up wave — " + kgToDisplay(startKg, unit) + " " + unit,
+          active: false,
+          kind: "pullup_wave",
+          exerciseId: "pullup",
+          startLoadKg: startKg,
+          intensiveLoadKg: startKg,
+          phaseIndex: 0,
+          microStepKg: 2.5,
+          schemeId: (scheme && scheme.id) || "pullup-wave",
+          days: [],
+        };
+        SL.store.upsertProgram(program);
+        SL.store.setActiveProgram(program.id);
+        state.mode = "pullup-status";
+        state.programId = program.id;
+        state.pullupScheme = scheme;
+        refresh();
+      }).catch(function (err) {
+        root.innerHTML =
+          '<div class="card"><p class="muted">Could not load pull-up wave: ' +
+          esc((err && err.message) || "error") +
+          '</p><button type="button" class="btn" id="pullup-back">Back</button></div>';
+        root.querySelector("#pullup-back").addEventListener("click", function () {
+          state.mode = "list";
+          refresh();
+        });
+      });
+    });
+  }
+
+  function renderPullupWaveStatus(root) {
+    var program = getEditingProgram();
+    if (!program || program.kind !== "pullup_wave") {
+      state.mode = "list";
+      renderList(root);
+      return;
+    }
+    var unit = settingsUnit();
+
+    function paint(scheme) {
+      state.pullupScheme = scheme;
+      var intensive = SL.store.currentPullupWaveSession(program, scheme, "intensive");
+      var volume = SL.store.currentPullupWaveSession(program, scheme, "volume");
+      var next = SL.store.currentPullupWaveSession(program, scheme, "next");
+      var phases = (scheme && scheme.phases) || [];
+      var idx = Number(program.phaseIndex) || 0;
+      var atPeak = idx >= phases.length - 1;
+      var phase = phases[idx] || {};
+      var phaseLabel = "3×" + (phase.reps != null ? phase.reps : "?");
+
+      var html = '<div class="card">';
+      html += '<div class="spread"><h2>' + esc(program.name) + "</h2>";
+      if (program.active) html += '<span class="badge">Active</span>';
+      html += "</div>";
+      html +=
+        '<p class="muted" style="margin:8px 0 14px">Macro: 10 → 6 → 3 · Micro: +2.5 kg until you drop reps</p>';
+      html += '<div class="stat-grid" style="margin-bottom:14px">';
+      html +=
+        '<div class="stat"><div class="val">' +
+        esc(phaseLabel) +
+        '</div><div class="lbl">Phase</div></div>';
+      html +=
+        '<div class="stat"><div class="val">' +
+        esc(kgToDisplay(program.intensiveLoadKg, unit) + " " + unit) +
+        '</div><div class="lbl">Intensive load</div></div>';
+      html += "</div>";
+
+      if (intensive && intensive.exercises[0]) {
+        var ix = intensive.exercises[0];
+        html +=
+          '<div class="session-card" style="margin-bottom:8px"><div class="head"><span class="date">Intensive</span><span class="muted small">3 sets</span></div>';
+        html +=
+          '<div class="pr-row"><div class="name">' +
+          esc(ix.sets + "×" + ix.reps) +
+          '</div><div class="value">' +
+          esc(kgToDisplay(ix.loadKg, unit) + " " + unit) +
+          "</div></div></div>";
+      }
+      if (volume && volume.exercises[0]) {
+        var vx = volume.exercises[0];
+        html +=
+          '<div class="session-card" style="margin-bottom:8px"><div class="head"><span class="date">Volume</span><span class="muted small">6 sets</span></div>';
+        html +=
+          '<div class="pr-row"><div class="name">' +
+          esc(vx.sets + "×" + vx.reps) +
+          '</div><div class="value">' +
+          esc(kgToDisplay(vx.loadKg, unit) + " " + unit) +
+          "</div></div></div>";
+      }
+      if (next) {
+        html +=
+          '<p class="muted small" style="margin:10px 0">Next session: <strong>' +
+          esc(next.name) +
+          "</strong></p>";
+      }
+
+      html += '<div class="stack" style="margin-top:12px">';
+      html +=
+        '<button type="button" class="btn block" id="pullup-micro">Next micro (+2.5 kg)</button>';
+      if (!atPeak) {
+        html +=
+          '<button type="button" class="btn block secondary" id="pullup-macro">End micro / next macro (drop reps)</button>';
+      } else {
+        html +=
+          '<p class="muted small">At final phase 3×3 — keep micro (+2.5 kg) or start a new cycle.</p>';
+      }
+      html += "</div>";
+      html += '<div class="row" style="gap:8px;margin-top:14px">';
+      html += '<button type="button" class="btn secondary" id="pullup-back-list">Back</button>';
+      if (!program.active) {
+        html += '<button type="button" class="btn" id="pullup-activate">Set Active</button>';
+      }
+      html += "</div></div>";
+      root.innerHTML = html;
+
+      root.querySelector("#pullup-back-list").addEventListener("click", function () {
+        state.mode = "list";
+        state.programId = null;
+        refresh();
+      });
+      var act = root.querySelector("#pullup-activate");
+      if (act) {
+        act.addEventListener("click", function () {
+          SL.store.setActiveProgram(program.id);
+          refresh();
+        });
+      }
+      root.querySelector("#pullup-micro").addEventListener("click", function () {
+        SL.store.advancePullupMicro(program.id);
+        var updated = getEditingProgram();
+        if (updated) program = updated;
+        paint(scheme);
+      });
+      var macroBtn = root.querySelector("#pullup-macro");
+      if (macroBtn) {
+        macroBtn.addEventListener("click", function () {
+          if (
+            !confirm(
+              "Drop reps to the next macro phase and keep current weight? (Use after RPE 10 / failure.)"
+            )
+          ) {
+            return;
+          }
+          SL.store.advancePullupMacro(program.id);
+          var updated = getEditingProgram();
+          if (updated) program = updated;
+          paint(scheme);
+        });
+      }
+    }
+
+    if (state.pullupScheme) {
+      paint(state.pullupScheme);
+    } else {
+      root.innerHTML = '<div class="card"><p class="muted">Loading wave…</p></div>';
+      SL.store
+        .loadPullupWaveScheme()
+        .then(paint)
+        .catch(function (err) {
+          root.innerHTML =
+            '<div class="card"><p class="muted">' +
+            esc((err && err.message) || "Failed to load") +
+            '</p><button type="button" class="btn" id="pullup-back-list">Back</button></div>';
+          root.querySelector("#pullup-back-list").addEventListener("click", function () {
+            state.mode = "list";
+            refresh();
+          });
+        });
+    }
   }
 
   function renderSquatCycleForm(root) {
@@ -796,6 +1017,10 @@
       renderSquatCycleForm(root);
     } else if (state.mode === "squat-schedule") {
       renderSquatSchedule(root);
+    } else if (state.mode === "pullup-wave") {
+      renderPullupWaveForm(root);
+    } else if (state.mode === "pullup-status") {
+      renderPullupWaveStatus(root);
     } else if (state.mode === "edit") {
       renderEdit(root);
     } else {
@@ -806,6 +1031,8 @@
   function title() {
     if (state.mode === "squat-cycle") return "Squat 1RM cycle";
     if (state.mode === "squat-schedule") return "Squat schedule";
+    if (state.mode === "pullup-wave") return "Pull-up wave";
+    if (state.mode === "pullup-status") return "Pull-up wave";
     if (state.mode === "edit" && state.dayIndex != null) return "Edit day";
     if (state.mode === "edit") return "Edit program";
     return "Programs";

@@ -7,12 +7,15 @@
   var STORAGE_KEY = "streetlifting-v1";
   var EXERCISES_URL = "data/exercises.json";
   var SQUAT_CYCLE_URL = "data/squat-1rm-cycle.json";
+  var PULLUP_WAVE_URL = "data/pullup-wave-cycle.json";
 
   var state = null;
   var builtinsCache = null;
   var builtinsPromise = null;
   var squatSchemeCache = null;
   var squatSchemePromise = null;
+  var pullupWaveCache = null;
+  var pullupWavePromise = null;
 
   function defaults() {
     return {
@@ -439,6 +442,143 @@
     return upcoming || sessions[sessions.length - 1];
   }
 
+  function loadPullupWaveScheme() {
+    if (pullupWaveCache) return Promise.resolve(pullupWaveCache);
+    if (pullupWavePromise) return pullupWavePromise;
+    pullupWavePromise = fetch(PULLUP_WAVE_URL)
+      .then(function (res) {
+        if (!res.ok) throw new Error("Failed to load pull-up wave: " + res.status);
+        return res.json();
+      })
+      .then(function (scheme) {
+        pullupWaveCache = scheme;
+        return scheme;
+      })
+      .catch(function (err) {
+        pullupWavePromise = null;
+        throw err;
+      });
+    return pullupWavePromise;
+  }
+
+  function pullupWavePhase(program, scheme) {
+    var phases = (scheme && scheme.phases) || [];
+    if (!phases.length) return null;
+    var idx = Number(program.phaseIndex) || 0;
+    if (idx < 0) idx = 0;
+    if (idx >= phases.length) idx = phases.length - 1;
+    return { index: idx, phase: phases[idx], phases: phases };
+  }
+
+  function lastPullupWaveDay(program) {
+    var logged = listSessions() || [];
+    for (var i = 0; i < logged.length; i++) {
+      var sess = logged[i];
+      if (!sess || sess.programId !== program.id) continue;
+      if (sess.waveDay === "intensive" || sess.waveDay === "volume") {
+        return sess.waveDay;
+      }
+    }
+    return null;
+  }
+
+  function resolvePullupWaveWhich(program, which) {
+    if (which === "intensive" || which === "volume") return which;
+    var last = lastPullupWaveDay(program);
+    if (last === "intensive") return "volume";
+    return "intensive";
+  }
+
+  function currentPullupWaveSession(program, scheme, which) {
+    if (!program || !scheme) return null;
+    var resolved = resolvePullupWaveWhich(program, which || "next");
+    var info = pullupWavePhase(program, scheme);
+    if (!info) return null;
+    var phase = info.phase;
+    var exId = program.exerciseId || scheme.exerciseId || "pullup";
+    var intensiveLoad = roundLoadKg(Number(program.intensiveLoadKg));
+    if (intensiveLoad == null) intensiveLoad = roundLoadKg(Number(program.startLoadKg)) || 0;
+    var loadKg = intensiveLoad;
+    var sets;
+    var reps;
+    var name;
+    if (resolved === "volume") {
+      sets = phase.volumeSets != null ? Number(phase.volumeSets) : 6;
+      reps = phase.volumeReps != null ? Number(phase.volumeReps) : phase.reps;
+      var offset = phase.volumeOffsetKg != null ? Number(phase.volumeOffsetKg) : 0;
+      loadKg = roundLoadKg(intensiveLoad + offset);
+      if (loadKg < 0) loadKg = 0;
+      name = "Volume · 6×" + reps;
+    } else {
+      sets = phase.intensiveSets != null ? Number(phase.intensiveSets) : 3;
+      reps = phase.reps != null ? Number(phase.reps) : 10;
+      name = "Intensive · 3×" + reps;
+    }
+    return {
+      id: "wave-" + resolved + "-p" + info.index,
+      name: name,
+      waveDay: resolved,
+      phaseIndex: info.index,
+      intensiveLoadKg: intensiveLoad,
+      exerciseId: exId,
+      exercises: [
+        {
+          exerciseId: exId,
+          sets: sets,
+          reps: reps,
+          loadKg: loadKg,
+          startLoadKg: loadKg,
+          repMin: reps,
+          repMax: reps,
+          progression: "manual",
+          pctLabel: resolved === "volume" && phase.volumeOffsetKg
+            ? "intensive " + (phase.volumeOffsetKg > 0 ? "+" : "") + phase.volumeOffsetKg + " kg"
+            : null,
+        },
+      ],
+    };
+  }
+
+  function findProgramById(id) {
+    var list = get().programs || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) return list[i];
+    }
+    return null;
+  }
+
+  function advancePullupMicro(programOrId) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!program || program.kind !== "pullup_wave") {
+      throw new Error("Not a pull-up wave program");
+    }
+    var step = Number(program.microStepKg);
+    if (!isFinite(step) || step <= 0) step = 2.5;
+    var cur = Number(program.intensiveLoadKg);
+    if (!isFinite(cur)) cur = Number(program.startLoadKg) || 0;
+    program.intensiveLoadKg = roundLoadKg(cur + step);
+    upsertProgram(program);
+    return program;
+  }
+
+  function advancePullupMacro(programOrId) {
+    var program =
+      typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
+    if (!program || program.kind !== "pullup_wave") {
+      throw new Error("Not a pull-up wave program");
+    }
+    var scheme = pullupWaveCache;
+    var maxIdx = scheme && scheme.phases ? scheme.phases.length - 1 : 2;
+    var idx = Number(program.phaseIndex) || 0;
+    if (idx >= maxIdx) {
+      return { program: program, advanced: false, atPeak: true };
+    }
+    program.phaseIndex = idx + 1;
+    upsertProgram(program);
+    return { program: program, advanced: true, atPeak: program.phaseIndex >= maxIdx };
+  }
+
   window.SL.store = {
     load: load,
     save: save,
@@ -464,6 +604,10 @@
     loadSquatCycleScheme: loadSquatCycleScheme,
     expandPercentCycle: expandPercentCycle,
     nextCycleSession: nextCycleSession,
+    loadPullupWaveScheme: loadPullupWaveScheme,
+    currentPullupWaveSession: currentPullupWaveSession,
+    advancePullupMicro: advancePullupMicro,
+    advancePullupMacro: advancePullupMacro,
     todayISO: todayISO,
   };
 })();
