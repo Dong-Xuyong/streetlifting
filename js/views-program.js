@@ -242,9 +242,9 @@
     html +=
       '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
     html +=
-      '<p class="muted" style="margin:16px 0 12px">Pull-up micro/macro wave: start weight, 3×10→3×6→3×3 intensive + matching volume. You advance +2.5 kg or drop reps.</p>';
+      '<p class="muted" style="margin:16px 0 12px">Pull-up wave: enter only the start weight for the first micro cycle (3×10). Volume matches the phase; you advance +2.5 kg or drop reps (10→6→3).</p>';
     html +=
-      '<button type="button" class="btn block" id="prog-pullup-wave">Pull-up wave cycle</button>';
+      '<button type="button" class="btn block" id="prog-pullup-wave">Pull-up wave (start weight)</button>';
     html += "</div>";
 
     root.innerHTML = html;
@@ -327,16 +327,16 @@
   function renderPullupWaveForm(root) {
     var unit = settingsUnit();
     var html = '<div class="card">';
-    html += "<h2>Pull-up wave cycle</h2>";
+    html += "<h2>Pull-up wave</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:14px">Starting intensive weight for this cycle. Intensive is always 3 sets (10→6→3 reps). Volume is 6 sets matched to the phase. Advance micro (+2.5 kg) or drop reps when you choose.</p>';
+      '<p class="muted" style="margin-bottom:14px">Only one input: start weight for the first micro cycle (phase 3×10). Then Intensive 3 sets / Volume 6 sets follow the wave. You choose when to +2.5 kg or drop reps.</p>';
     html +=
-      '<label class="field"><span class="lbl">Starting intensive weight (' +
+      '<label class="field"><span class="lbl">Start weight — first micro cycle (' +
       esc(unit) +
-      ')</span><input type="number" id="pullup-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" /></label>';
+      ')</span><input type="number" id="pullup-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" autofocus /></label>';
     html += '<div class="row" style="gap:8px;margin-top:8px">';
     html += '<button type="button" class="btn secondary" id="pullup-cancel">Cancel</button>';
-    html += '<button type="button" class="btn" id="pullup-create">Create &amp; start</button>';
+    html += '<button type="button" class="btn" id="pullup-create">Create program</button>';
     html += "</div></div>";
     root.innerHTML = html;
 
