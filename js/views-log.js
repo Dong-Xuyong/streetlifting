@@ -532,8 +532,16 @@
     if (action === "prefill-program") {
       SL.pendingStart = true;
       draft = null;
-      ensureDraft({ startFromProgram: true });
-      paintLog(root);
+      var prog = SL.store.getActiveProgram();
+      if (prog && prog.kind === "percent_cycle") {
+        root.innerHTML = '<div class="card"><p class="muted">Loading squat session…</p></div>';
+        ensureDraft({ startFromProgram: true }, function () {
+          if (root.isConnected) paintLog(root);
+        });
+      } else {
+        ensureDraft({ startFromProgram: true });
+        paintLog(root);
+      }
       return;
     }
 
