@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="theme-color" content="#0d1117" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#f6f4ef" />
   <meta name="description" content="Weighted calisthenics tracker — programs, session log, rest timer, and plate loads. Chalk on steel." />
   <meta name="application-name" content="Streetlifting" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -15,8 +15,10 @@
   <title>Streetlifting</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="dong-ui/theme.css" />
   <link rel="stylesheet" href="styles.css" />
+  <script src="dong-ui/theme.js"></script>
   <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
@@ -35,6 +37,7 @@
         <h1 id="topbar-title">Streetlifting</h1>
       </div>
       <span id="topbar-meta" aria-live="polite"></span>
+      <button type="button" data-dong-theme-toggle aria-label="Toggle color theme"></button>
     </header>
 
     <main id="view-root" tabindex="-1" aria-labelledby="topbar-title"></main>
@@ -65,7 +68,7 @@
   </div>
 
   <noscript>
-    <p style="margin:24px 16px;color:#e6edf3;font:500 1rem/1.4 'DM Sans',system-ui,sans-serif;max-width:640px">
+    <p style="margin:24px 16px;color:#e6edf3;font:500 1rem/1.4 'Encode Sans',system-ui,sans-serif;max-width:640px">
       Streetlifting needs JavaScript to run. Enable it, then reload.
     </p>
   </noscript>
