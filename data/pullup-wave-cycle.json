@@ -1,6 +1,6 @@
 {
   "id": "pullup-wave",
-  "name": "Pull-up micro/macro wave",
+  "name": "Pull-up macro & micro cycle",
   "exerciseId": "pullup",
   "phases": [
     {

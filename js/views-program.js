@@ -192,7 +192,7 @@
           p.kind === "percent_cycle"
             ? "4-week % cycle"
             : p.kind === "pullup_wave"
-              ? "Pull-up wave"
+              ? "Pull-up macro/micro"
               : ((p.days && p.days.length) || 0) +
                 " day" +
                 ((p.days && p.days.length) === 1 ? "" : "s");
@@ -232,19 +232,28 @@
     html += "</div>";
 
     html += '<div class="card">';
-    html += "<h2>Template</h2>";
+    html += "<h2>Program templates</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:12px">2-day double progression: pull-ups + dips (face pull if available).</p>';
+      '<div class="session-card" style="margin-bottom:12px">' +
+      '<div class="head"><span class="date">Pull-up macro &amp; micro cycle</span></div>' +
+      '<p class="muted small" style="margin:8px 0 12px">' +
+      "Intensive 3×10 → 3×6 → 3×3. Micro: +2.5 kg until you stop. Volume 6 sets (6 / 4 / 3−5 kg). " +
+      "Only input: start weight for the first micro cycle." +
+      "</p>" +
+      '<button type="button" class="btn block" id="prog-pullup-wave">Use this template</button>' +
+      "</div>";
     html +=
-      '<button type="button" class="btn block secondary" id="prog-starter">Load starter template</button>';
+      '<div class="session-card" style="margin-bottom:12px">' +
+      '<div class="head"><span class="date">Squat 1RM cycle (4 weeks)</span></div>' +
+      '<p class="muted small" style="margin:8px 0 12px">Enter target end-of-cycle 1RM; loads schedule from %.</p>' +
+      '<button type="button" class="btn block secondary" id="prog-squat-cycle">Use this template</button>' +
+      "</div>";
     html +=
-      '<p class="muted" style="margin:16px 0 12px">4-week squat peaking cycle. Enter your target 1RM and the app schedules every session from %.</p>';
-    html +=
-      '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
-    html +=
-      '<p class="muted" style="margin:16px 0 12px">Pull-up wave: enter only the start weight for the first micro cycle (3×10). Volume matches the phase; you advance +2.5 kg or drop reps (10→6→3).</p>';
-    html +=
-      '<button type="button" class="btn block" id="prog-pullup-wave">Pull-up wave (start weight)</button>';
+      '<div class="session-card">' +
+      '<div class="head"><span class="date">Double progression Pull + Dip</span></div>' +
+      '<p class="muted small" style="margin:8px 0 12px">2-day starter with optional face pulls.</p>' +
+      '<button type="button" class="btn block secondary" id="prog-starter">Use this template</button>' +
+      "</div>";
     html += "</div>";
 
     root.innerHTML = html;
@@ -327,16 +336,20 @@
   function renderPullupWaveForm(root) {
     var unit = settingsUnit();
     var html = '<div class="card">';
-    html += "<h2>Pull-up wave</h2>";
+    html += "<h2>Pull-up macro &amp; micro cycle</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:14px">Only one input: start weight for the first micro cycle (phase 3×10). Then Intensive 3 sets / Volume 6 sets follow the wave. You choose when to +2.5 kg or drop reps.</p>';
+      '<p class="muted" style="margin-bottom:10px"><strong>Macro:</strong> 3×10 → 3×6 → 3×3 (always 3 intensive sets). ' +
+      "<strong>Micro:</strong> hold weight, then +2.5 kg when you choose; at failure drop reps (keep weight). " +
+      "<strong>Volume:</strong> 6×6 / 6×4 / 6×3 (−5 kg on the last phase).</p>";
+    html +=
+      '<p class="muted" style="margin-bottom:14px">Only input needed: start weight for the first micro cycle.</p>';
     html +=
       '<label class="field"><span class="lbl">Start weight — first micro cycle (' +
       esc(unit) +
       ')</span><input type="number" id="pullup-start" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 20" autofocus /></label>';
     html += '<div class="row" style="gap:8px;margin-top:8px">';
     html += '<button type="button" class="btn secondary" id="pullup-cancel">Cancel</button>';
-    html += '<button type="button" class="btn" id="pullup-create">Create program</button>';
+    html += '<button type="button" class="btn" id="pullup-create">Create from template</button>';
     html += "</div></div>";
     root.innerHTML = html;
 
@@ -358,7 +371,7 @@
       SL.store.loadPullupWaveScheme().then(function (scheme) {
         var program = {
           id: uid(),
-          name: "Pull-up wave — " + kgToDisplay(startKg, unit) + " " + unit,
+          name: "Pull-up macro/micro — " + kgToDisplay(startKg, unit) + " " + unit,
           active: false,
           kind: "pullup_wave",
           exerciseId: "pullup",
@@ -413,16 +426,18 @@
       if (program.active) html += '<span class="badge">Active</span>';
       html += "</div>";
       html +=
-        '<p class="muted" style="margin:8px 0 14px">Macro: 10 → 6 → 3 · Micro: +2.5 kg until you drop reps</p>';
+        '<p class="muted" style="margin:8px 0 14px">Macro phase ' +
+        esc(String(idx + 1)) +
+        "/3 · Micro step +2.5 kg</p>";
       html += '<div class="stat-grid" style="margin-bottom:14px">';
       html +=
         '<div class="stat"><div class="val">' +
         esc(phaseLabel) +
-        '</div><div class="lbl">Phase</div></div>';
+        '</div><div class="lbl">Macro (intensive)</div></div>';
       html +=
         '<div class="stat"><div class="val">' +
         esc(kgToDisplay(program.intensiveLoadKg, unit) + " " + unit) +
-        '</div><div class="lbl">Intensive load</div></div>';
+        '</div><div class="lbl">Current micro load</div></div>';
       html += "</div>";
 
       if (intensive && intensive.exercises[0]) {
@@ -456,13 +471,13 @@
 
       html += '<div class="stack" style="margin-top:12px">';
       html +=
-        '<button type="button" class="btn block" id="pullup-micro">Next micro (+2.5 kg)</button>';
+        '<button type="button" class="btn block" id="pullup-micro">Advance micro cycle (+2.5 kg)</button>';
       if (!atPeak) {
         html +=
-          '<button type="button" class="btn block secondary" id="pullup-macro">End micro / next macro (drop reps)</button>';
+          '<button type="button" class="btn block secondary" id="pullup-macro">End micro → next macro (drop reps)</button>';
       } else {
         html +=
-          '<p class="muted small">At final phase 3×3 — keep micro (+2.5 kg) or start a new cycle.</p>';
+          '<p class="muted small">Final macro phase 3×3 — keep advancing micros (+2.5 kg) or create a new template.</p>';
       }
       html += "</div>";
       html += '<div class="row" style="gap:8px;margin-top:14px">';
@@ -1031,8 +1046,8 @@
   function title() {
     if (state.mode === "squat-cycle") return "Squat 1RM cycle";
     if (state.mode === "squat-schedule") return "Squat schedule";
-    if (state.mode === "pullup-wave") return "Pull-up wave";
-    if (state.mode === "pullup-status") return "Pull-up wave";
+    if (state.mode === "pullup-wave") return "Pull-up template";
+    if (state.mode === "pullup-status") return "Pull-up cycle";
     if (state.mode === "edit" && state.dayIndex != null) return "Edit day";
     if (state.mode === "edit") return "Edit program";
     return "Programs";
