@@ -4,9 +4,9 @@
   --bg-card: #ffffff;
   --border: #e2e0d9;
   --text: #0d0b08;
-  --text-dim: #76726b;
-  --accent: #77b7ff;
-  --accent-soft: rgba(119, 183, 255, 0.12);
+  --text-dim: #3f3b36;
+  --accent: #1d6bb8;
+  --accent-soft: rgba(29, 107, 184, 0.12);
   --green: #3fb96b;
   --red: #e5534b;
   --amber: #d9a038;
@@ -42,6 +42,8 @@ html.dark {
   --border: #2b2b2b;
   --text: #efeeec;
   --text-dim: #d0cec9;
+  --accent: #77b7ff;
+  --accent-soft: rgba(119, 183, 255, 0.12);
 }
 
 * {
