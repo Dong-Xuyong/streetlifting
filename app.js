@@ -56,6 +56,11 @@
     updateChrome(view, currentTab);
     setActiveTabButton(currentTab);
 
+    if (currentTab !== "log") {
+      const fab = document.getElementById("log-complete-fab");
+      if (fab) fab.remove();
+    }
+
     if (!view || typeof view.render !== "function") {
       el.innerHTML = `<div class="empty"><p>View "${currentTab}" is not available yet.</p></div>`;
       return;

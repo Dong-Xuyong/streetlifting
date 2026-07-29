@@ -19,6 +19,8 @@
   /** @type {number|null} after complete-set, scroll toward next open set */
   var pendingScrollSetIdx = null;
   var doneHideTimer = null;
+  /** @type {number|null} interval for live workout duration */
+  var workoutClockTimer = null;
 
   function ensureNotes(obj) {
     if (!obj || typeof obj !== "object") return obj;
@@ -124,7 +126,169 @@
       unit: s.unit === "lb" ? "lb" : "kg",
       restSeconds: typeof s.restSeconds === "number" ? s.restSeconds : 180,
       bodyweightKg: s.bodyweightKg != null ? s.bodyweightKg : null,
+      autoStartRest: s.autoStartRest !== false,
     };
+  }
+
+  function makeSet(exerciseId, patch) {
+    var p = patch && typeof patch === "object" ? patch : {};
+    if (SL.store && typeof SL.store.newSet === "function") {
+      return SL.store.newSet(exerciseId, p);
+    }
+    var set = {
+      id: uid(),
+      exerciseId: exerciseId == null ? null : exerciseId,
+      loadKg: 0,
+      reps: 0,
+      completed: false,
+      type: "normal",
+      supersetId: null,
+    };
+    for (var k in p) {
+      if (Object.prototype.hasOwnProperty.call(p, k)) set[k] = p[k];
+    }
+    if (
+      set.type !== "normal" &&
+      set.type !== "warmup" &&
+      set.type !== "drop" &&
+      set.type !== "failure"
+    ) {
+      set.type = "normal";
+    }
+    if (!Object.prototype.hasOwnProperty.call(set, "supersetId")) set.supersetId = null;
+    return set;
+  }
+
+  function ensureSetShape(set) {
+    if (!set || typeof set !== "object") return set;
+    if (!set.id) set.id = uid();
+    if (
+      set.type !== "normal" &&
+      set.type !== "warmup" &&
+      set.type !== "drop" &&
+      set.type !== "failure"
+    ) {
+      set.type = "normal";
+    }
+    if (!Object.prototype.hasOwnProperty.call(set, "supersetId")) set.supersetId = null;
+    if (typeof set.note !== "string") {
+      set.note = set.note != null ? String(set.note) : "";
+    }
+    return set;
+  }
+
+  function cycleSetType(type) {
+    if (type === "normal") return "warmup";
+    if (type === "warmup") return "drop";
+    if (type === "drop") return "failure";
+    return "normal";
+  }
+
+  function setTypeMarker(type, workingNum) {
+    if (type === "warmup") return "W";
+    if (type === "drop") return "D";
+    if (type === "failure") return "F";
+    return String(workingNum);
+  }
+
+  function setTypeClass(type) {
+    var cls = "set-type";
+    if (type === "warmup") cls += " set-type--warmup";
+    else if (type === "drop") cls += " set-type--drop";
+    else if (type === "failure") cls += " set-type--failure";
+    return cls;
+  }
+
+  function setCountsForVolume(set) {
+    if (SL.store && typeof SL.store.countsForVolume === "function") {
+      return SL.store.countsForVolume(set);
+    }
+    if (!set || set.completed === false) return false;
+    if (set.type === "warmup") return false;
+    return true;
+  }
+
+  function setVolumeKg(set, bodyweightKg) {
+    if (SL.store && typeof SL.store.setVolumeKg === "function") {
+      return SL.store.setVolumeKg(set, bodyweightKg);
+    }
+    if (!setCountsForVolume(set)) return 0;
+    var load = Number(set.loadKg) || 0;
+    var reps = Number(set.reps) || 0;
+    return load * reps;
+  }
+
+  function draftVolumeStats() {
+    var sets = (draft && draft.sets) || [];
+    var bw = draft ? draft.bodyweightKg : null;
+    var working = 0;
+    var volume = 0;
+    var completed = 0;
+    for (var i = 0; i < sets.length; i++) {
+      var set = sets[i];
+      if (!set || set.completed === false) continue;
+      completed += 1;
+      if (!setCountsForVolume(set)) continue;
+      working += 1;
+      volume += setVolumeKg(set, bw);
+    }
+    return { completed: completed, working: working, volumeKg: volume };
+  }
+
+  function previousSetsFor(exerciseId) {
+    if (!draft || !exerciseId) return [];
+    if (SL.store && typeof SL.store.previousSetsFor === "function") {
+      try {
+        return SL.store.previousSetsFor(exerciseId, draft.id) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  function prBadgeHtml(set, session) {
+    if (!SL.prs || typeof SL.prs.checkSet !== "function") return "";
+    try {
+      var records = SL.prs.checkSet(set, session);
+      if (!records || !records.length) return "";
+      if (typeof SL.prs.badgeHtml === "function") {
+        return SL.prs.badgeHtml(records) || "";
+      }
+      return "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function groupExerciseSections(sets) {
+    var sections = [];
+    var byExLocal = {};
+    for (var i = 0; i < (sets || []).length; i++) {
+      var set = sets[i];
+      ensureSetShape(set);
+      var exId = set.exerciseId || "";
+      var last = sections.length ? sections[sections.length - 1] : null;
+      if (!last || last.exerciseId !== exId) {
+        last = {
+          exerciseId: exId,
+          indices: [],
+          localNums: [],
+          supersetId: set.supersetId || null,
+        };
+        sections.push(last);
+        if (!byExLocal[exId]) byExLocal[exId] = 0;
+      }
+      last.indices.push(i);
+      last.localNums.push(byExLocal[exId]);
+      byExLocal[exId] += 1;
+      if (set.supersetId) last.supersetId = set.supersetId;
+    }
+    return sections;
+  }
+
+  function newSupersetId() {
+    return "ss-" + uid();
   }
 
   function kgToDisplay(kg, unit) {
@@ -187,7 +351,120 @@
       note: "",
       sectionNotes: {},
       sets: [],
+      startedAt: null,
+      endedAt: null,
+      durationSec: null,
     };
+  }
+
+  function formatElapsed(ms) {
+    var total = Math.max(0, Math.floor(Number(ms) / 1000));
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    if (h > 0) {
+      return h + ":" + pad2(m) + ":" + pad2(s);
+    }
+    return m + ":" + pad2(s);
+  }
+
+  function workoutElapsedMs() {
+    if (!draft || draft.startedAt == null) return 0;
+    var start = Number(draft.startedAt);
+    if (!start || isNaN(start)) return 0;
+    return Math.max(0, Date.now() - start);
+  }
+
+  function ensureWorkoutStarted() {
+    if (!draft) return;
+    if (draft.startedAt == null || isNaN(Number(draft.startedAt))) {
+      draft.startedAt = Date.now();
+    }
+    draft.endedAt = null;
+    draft.durationSec = null;
+  }
+
+  function stopWorkoutClockTick() {
+    if (workoutClockTimer != null) {
+      clearInterval(workoutClockTimer);
+      workoutClockTimer = null;
+    }
+  }
+
+  function syncWorkoutClockUI() {
+    var label = draft && draft.startedAt != null ? formatElapsed(workoutElapsedMs()) : "";
+    var meta = document.getElementById("topbar-meta");
+    if (meta) {
+      if (label) {
+        meta.textContent = label;
+        meta.setAttribute("title", "Workout time");
+        meta.setAttribute("aria-label", "Workout time " + label);
+        meta.classList.add("workout-clock");
+      } else {
+        meta.textContent = "";
+        meta.removeAttribute("title");
+        meta.removeAttribute("aria-label");
+        meta.classList.remove("workout-clock");
+      }
+    }
+    var live = document.getElementById("log-workout-clock");
+    if (live) live.textContent = label || "0:00";
+  }
+
+  function startWorkoutClockTick() {
+    stopWorkoutClockTick();
+    ensureWorkoutStarted();
+    syncWorkoutClockUI();
+    workoutClockTimer = setInterval(function () {
+      if (SL.app && SL.app.currentTab && SL.app.currentTab !== "log") {
+        stopWorkoutClockTick();
+        removeCompleteFab();
+        return;
+      }
+      syncWorkoutClockUI();
+    }, 1000);
+  }
+
+  function removeCompleteFab() {
+    var fab = document.getElementById("log-complete-fab");
+    if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
+  }
+
+  function ensureCompleteFab() {
+    var app = document.getElementById("app");
+    if (!app) return;
+    var fab = document.getElementById("log-complete-fab");
+    if (!fab) {
+      fab = document.createElement("button");
+      fab.type = "button";
+      fab.id = "log-complete-fab";
+      fab.className = "btn btn-primary log-complete-fab";
+      fab.setAttribute("data-action", "complete-session");
+      fab.setAttribute("aria-label", "Complete workout");
+      fab.textContent = "Complete workout";
+      fab.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (!draft) return;
+        saveSession(true);
+      });
+      app.appendChild(fab);
+    }
+    fab.hidden = false;
+  }
+
+  function endWorkoutClock(resetDraftStartedAt) {
+    stopWorkoutClockTick();
+    var elapsed = workoutElapsedMs();
+    if (resetDraftStartedAt && draft) draft.startedAt = null;
+    var meta = document.getElementById("topbar-meta");
+    if (meta) {
+      meta.textContent = "";
+      meta.removeAttribute("title");
+      meta.removeAttribute("aria-label");
+      meta.classList.remove("workout-clock");
+    }
+    removeCompleteFab();
+    return elapsed;
   }
 
   function setFromProgramEx(pe) {
@@ -207,15 +484,15 @@
           : pe.repMax != null
             ? String(pe.repMax)
             : "";
-    return {
-      exerciseId: pe.exerciseId || "",
+    var set = makeSet(pe.exerciseId || "", {
       loadKg: pe.startLoadKg != null ? pe.startLoadKg : null,
       reps: targetReps,
       rpe: null,
       completed: false,
-      targetLoadKg: pe.startLoadKg != null ? pe.startLoadKg : null,
-      targetRepsLabel: repLabel,
-    };
+    });
+    set.targetLoadKg = pe.startLoadKg != null ? pe.startLoadKg : null;
+    set.targetRepsLabel = repLabel;
+    return set;
   }
 
   function draftFromProgram(program, day) {
@@ -242,6 +519,9 @@
       note: "",
       sectionNotes: {},
       sets: sets,
+      startedAt: Date.now(),
+      endedAt: null,
+      durationSec: null,
     };
   }
 
@@ -263,16 +543,16 @@
             : "");
       }
       for (var k = 0; k < count; k++) {
-        sets.push({
-          exerciseId: pe.exerciseId || "squat",
+        var cset = makeSet(pe.exerciseId || "squat", {
           loadKg: pe.loadKg != null ? pe.loadKg : null,
           reps: pe.reps != null ? pe.reps : null,
           rpe: null,
           completed: false,
-          targetLoadKg: pe.loadKg != null ? pe.loadKg : null,
-          targetLoadKgMax: pe.loadKgMax != null ? pe.loadKgMax : null,
-          targetRepsLabel: repLabel,
         });
+        cset.targetLoadKg = pe.loadKg != null ? pe.loadKg : null;
+        cset.targetLoadKgMax = pe.loadKgMax != null ? pe.loadKgMax : null;
+        cset.targetRepsLabel = repLabel;
+        sets.push(cset);
       }
     }
     return {
@@ -291,6 +571,9 @@
       note: "",
       sectionNotes: {},
       sets: sets,
+      startedAt: Date.now(),
+      endedAt: null,
+      durationSec: null,
     };
   }
 
@@ -303,15 +586,15 @@
       var count = pe.sets != null && pe.sets > 0 ? pe.sets : 1;
       var repLabel = pe.sets + "×" + pe.reps + " @ " + pe.loadKg + " kg";
       for (var k = 0; k < count; k++) {
-        sets.push({
-          exerciseId: pe.exerciseId || "pullup",
+        var wset = makeSet(pe.exerciseId || "pullup", {
           loadKg: pe.loadKg != null ? pe.loadKg : null,
           reps: pe.reps != null ? pe.reps : null,
           rpe: null,
           completed: false,
-          targetLoadKg: pe.loadKg != null ? pe.loadKg : null,
-          targetRepsLabel: repLabel,
         });
+        wset.targetLoadKg = pe.loadKg != null ? pe.loadKg : null;
+        wset.targetRepsLabel = repLabel;
+        sets.push(wset);
       }
     }
     return {
@@ -330,20 +613,27 @@
       note: "",
       sectionNotes: {},
       sets: sets,
+      startedAt: Date.now(),
+      endedAt: null,
+      durationSec: null,
     };
   }
 
   function draftFromSession(sess) {
     var sets = (sess.sets || []).map(function (set) {
-      return {
-        exerciseId: set.exerciseId || "",
+      var row = makeSet(set.exerciseId || "", {
         loadKg: set.loadKg != null ? set.loadKg : null,
         reps: set.reps != null ? set.reps : null,
         rpe: set.rpe != null ? set.rpe : null,
         completed: set.completed !== false,
-        targetLoadKg: null,
-        targetRepsLabel: "",
-      };
+        type: set.type || "normal",
+        note: typeof set.note === "string" ? set.note : set.note != null ? String(set.note) : "",
+        supersetId: set.supersetId != null ? set.supersetId : null,
+      });
+      if (set.id) row.id = set.id;
+      row.targetLoadKg = null;
+      row.targetRepsLabel = "";
+      return row;
     });
     var notes = {};
     if (sess.sectionNotes && typeof sess.sectionNotes === "object") {
@@ -360,9 +650,18 @@
       programId: sess.programId || null,
       dayId: sess.dayId || null,
       dayName: null,
+      week: sess.week != null ? sess.week : null,
+      dayNum: sess.day != null ? sess.day : null,
+      cycleKey: sess.cycleKey || null,
+      waveDay: sess.waveDay || null,
+      phaseIndex: sess.phaseIndex != null ? sess.phaseIndex : null,
+      intensiveLoadKg: sess.intensiveLoadKg != null ? sess.intensiveLoadKg : null,
       note: typeof sess.note === "string" ? sess.note : "",
       sectionNotes: notes,
       sets: sets,
+      startedAt: sess.startedAt != null ? sess.startedAt : Date.now(),
+      endedAt: sess.endedAt != null ? sess.endedAt : null,
+      durationSec: sess.durationSec != null ? sess.durationSec : null,
     };
   }
 
@@ -513,12 +812,14 @@
     overlayEl.setAttribute("aria-modal", "true");
     overlayEl.setAttribute("aria-label", "Rest timer");
     overlayEl.innerHTML =
+      '<div class="rest-bar" data-rest-bar>' +
       '<div class="timer-label" data-timer-label>Rest</div>' +
-      '<div class="timer-display" data-timer-display aria-live="polite">0:00</div>' +
-      '<div class="timer-actions">' +
-      '<button type="button" class="btn secondary" data-timer-add>+30s</button>' +
-      '<button type="button" class="btn btn-primary" data-timer-skip>Skip rest</button>' +
-      "</div>";
+      '<div class="rest-bar-time timer-display" data-timer-display aria-live="polite">0:00</div>' +
+      '<div class="timer-actions rest-bar-actions">' +
+      '<button type="button" class="btn secondary rest-bar-adjust" data-timer-adj="-15" aria-label="Minus 15 seconds">-15s</button>' +
+      '<button type="button" class="btn secondary rest-bar-adjust" data-timer-adj="15" aria-label="Plus 15 seconds">+15s</button>' +
+      '<button type="button" class="btn btn-primary rest-bar-skip" data-timer-skip>Skip rest</button>' +
+      "</div></div>";
     document.body.appendChild(overlayEl);
     overlayEl.addEventListener("click", function (e) {
       var t = e.target;
@@ -527,11 +828,23 @@
         hideOverlay();
         return;
       }
-      if (t.closest("[data-timer-add]")) {
-        var addSec = 30;
-        var cur = SL.timer && typeof SL.timer.remaining === "function" ? SL.timer.remaining() : 0;
+      var adjBtn = t.closest("[data-timer-adj]");
+      if (adjBtn) {
+        var delta = Number(adjBtn.getAttribute("data-timer-adj")) || 0;
+        if (SL.timer && typeof SL.timer.adjust === "function") {
+          SL.timer.adjust(delta);
+          if (typeof SL.timer.remaining === "function") {
+            var rem = SL.timer.remaining();
+            var display = overlayEl.querySelector("[data-timer-display]");
+            if (display) display.textContent = formatMmSs(rem);
+            setOverlayDone(rem <= 0);
+          }
+          return;
+        }
+        var cur =
+          SL.timer && typeof SL.timer.remaining === "function" ? SL.timer.remaining() : 0;
         if (cur < 0) cur = 0;
-        showRestTimer(cur + addSec);
+        showRestTimer(Math.max(0, cur + delta));
       }
     });
     return overlayEl;
@@ -539,9 +852,14 @@
 
   function setOverlayDone(isDone) {
     var el = ensureOverlay();
+    var bar = el.querySelector("[data-rest-bar]");
     var display = el.querySelector("[data-timer-display]");
     var label = el.querySelector("[data-timer-label]");
     var skip = el.querySelector("[data-timer-skip]");
+    if (bar) {
+      if (isDone) bar.classList.add("rest-bar--done");
+      else bar.classList.remove("rest-bar--done");
+    }
     if (display) {
       if (isDone) display.classList.add("done");
       else display.classList.remove("done");
@@ -555,7 +873,7 @@
       clearTimeout(doneHideTimer);
       doneHideTimer = null;
     }
-    if (SL.timer) SL.timer.stop();
+    if (SL.timer && typeof SL.timer.stop === "function") SL.timer.stop();
     var el = ensureOverlay();
     el.classList.add("hidden");
     setOverlayDone(false);
@@ -563,7 +881,38 @@
     if (display) display.textContent = "0:00";
   }
 
+  function bindRestTick(display) {
+    return function tick(rem) {
+      if (display) {
+        display.textContent = formatMmSs(rem);
+        if (rem <= 0) setOverlayDone(true);
+        else setOverlayDone(false);
+      }
+    };
+  }
+
+  function bindRestDone(display) {
+    return function () {
+      if (display) {
+        display.textContent = "0:00";
+        setOverlayDone(true);
+      }
+      if (SL.timer && typeof SL.timer.notifyOnDone === "function") {
+        try {
+          SL.timer.notifyOnDone();
+        } catch (errNotify) {
+          /* ignore */
+        }
+      }
+      doneHideTimer = setTimeout(function () {
+        doneHideTimer = null;
+        hideOverlay();
+      }, 1400);
+    };
+  }
+
   function showRestTimer(seconds) {
+    if (!SL.timer || typeof SL.timer.start !== "function") return;
     if (doneHideTimer) {
       clearTimeout(doneHideTimer);
       doneHideTimer = null;
@@ -572,26 +921,216 @@
     var display = el.querySelector("[data-timer-display]");
     el.classList.remove("hidden");
     setOverlayDone(false);
+    SL.timer.start(seconds, bindRestTick(display), bindRestDone(display));
+  }
 
-    function tick(rem) {
-      if (display) {
-        display.textContent = formatMmSs(rem);
-        if (rem <= 0) setOverlayDone(true);
-        else setOverlayDone(false);
+  function startRestForExercise(exerciseId) {
+    var s = settings();
+    if (!s.autoStartRest) return;
+    if (!SL.timer) return;
+    if (doneHideTimer) {
+      clearTimeout(doneHideTimer);
+      doneHideTimer = null;
+    }
+    var el = ensureOverlay();
+    var display = el.querySelector("[data-timer-display]");
+    el.classList.remove("hidden");
+    setOverlayDone(false);
+    var onTick = bindRestTick(display);
+    var onDone = bindRestDone(display);
+    if (typeof SL.timer.startFor === "function") {
+      SL.timer.startFor(exerciseId, onTick, onDone);
+      return;
+    }
+    var sec = settings().restSeconds;
+    if (SL.store && typeof SL.store.restSecondsFor === "function") {
+      try {
+        sec = SL.store.restSecondsFor(exerciseId);
+      } catch (errRest) {
+        /* keep default */
       }
     }
+    if (sec > 0 && typeof SL.timer.start === "function") {
+      SL.timer.start(sec, onTick, onDone);
+    }
+  }
 
-    SL.timer.start(seconds, tick, function () {
-      if (display) {
-        display.textContent = "0:00";
-        setOverlayDone(true);
-      }
-      // Hold long enough for CSS .done pulse (2 × 0.55s) to read on the floor
-      doneHideTimer = setTimeout(function () {
-        doneHideTimer = null;
-        hideOverlay();
-      }, 1400);
-    });
+  function renderSetRow(set, idx, localIdx, unit, workingNum) {
+    ensureSetShape(set);
+    var type = set.type || "normal";
+    var isWarmup = type === "warmup";
+    var prevList = previousSetsFor(set.exerciseId);
+    var prev = prevList[localIdx];
+    var prevHtml = "";
+    if (prev && (prev.loadKg != null || prev.reps != null)) {
+      prevHtml =
+        '<button type="button" class="prev-set" data-action="apply-prev-set" aria-label="Use previous set values">' +
+        esc(fmtWeight(prev.loadKg, unit)) +
+        " x " +
+        esc(prev.reps != null ? prev.reps : "\u2014") +
+        "</button>";
+    } else {
+      prevHtml = '<span class="prev-set prev-set-empty" aria-hidden="true">\u2014</span>';
+    }
+
+    var noteVal = typeof set.note === "string" ? set.note : "";
+    var hasNote = !!(noteVal && String(noteVal).trim());
+    var noteOpen = hasNote;
+    var badge = set.completed ? prBadgeHtml(set, draft) : "";
+    var rowCls =
+      "set-row" + (isWarmup ? " set-row--warmup" : "") + (set.completed ? " set-row--done" : "");
+
+    var html =
+      '<div class="' +
+      rowCls +
+      '" data-set-idx="' +
+      idx +
+      '"' +
+      (set.completed ? ' data-completed="1"' : "") +
+      ">" +
+      '<button type="button" class="' +
+      setTypeClass(type) +
+      '" data-action="cycle-set-type" aria-label="Set type ' +
+      esc(type) +
+      '. Tap to change.">' +
+      esc(setTypeMarker(type, workingNum)) +
+      "</button>" +
+      prevHtml +
+      '<input type="number" class="load-num" inputmode="decimal" step="any" enterkeyhint="next" data-field="load" placeholder="0" value="' +
+      esc(kgToDisplay(set.loadKg, unit)) +
+      '" aria-label="Load in ' +
+      esc(unit) +
+      '" />' +
+      '<input type="number" inputmode="numeric" step="1" enterkeyhint="done" data-field="reps" placeholder="0" value="' +
+      esc(set.reps != null ? set.reps : "") +
+      '" aria-label="Reps" />' +
+      (set.completed
+        ? '<span class="badge green set-done-badge">Done</span>'
+        : '<button type="button" class="btn btn-primary sm" data-action="complete-set" aria-label="Complete set">OK</button>') +
+      "</div>" +
+      '<div class="set-row-meta" data-set-idx="' +
+      idx +
+      '">' +
+      '<label class="field set-rpe-field"><span class="lbl">RPE</span>' +
+      '<input type="number" inputmode="decimal" step="0.5" min="1" max="10" data-field="rpe" placeholder="\u2014" value="' +
+      esc(set.rpe != null ? set.rpe : "") +
+      '" aria-label="RPE" /></label>' +
+      '<div class="set-note">' +
+      '<button type="button" class="set-note-btn' +
+      (hasNote ? " set-note-btn--on" : "") +
+      '" data-action="toggle-set-note" aria-expanded="' +
+      (noteOpen ? "true" : "false") +
+      '" aria-label="' +
+      (hasNote ? "Edit set note" : "Add set note") +
+      '">Note</button>' +
+      '<input type="text" class="set-note-input' +
+      (noteOpen ? "" : " hidden") +
+      '" data-field="set-note" maxlength="200" placeholder="Set note" value="' +
+      esc(noteVal) +
+      '" aria-label="Set note" />' +
+      "</div>" +
+      (badge ? '<div class="set-pr-badges">' + badge + "</div>" : "") +
+      '<button type="button" class="icon-btn del-set" data-action="remove-set" aria-label="Remove set">&times;</button>' +
+      "</div>";
+
+    if (set.targetRepsLabel || set.targetLoadKg != null) {
+      html =
+        '<p class="muted small set-target-hint" data-set-idx="' +
+        idx +
+        '">Target: ' +
+        esc(
+          (set.targetLoadKg != null ? fmtWeight(set.targetLoadKg, unit) : "\u2014") +
+            (set.targetRepsLabel ? " x " + set.targetRepsLabel : "")
+        ) +
+        "</p>" +
+        html;
+    }
+    return html;
+  }
+
+  function renderExerciseSection(section, secIdx, sections, exercises, unit) {
+    var names = nameMap(exercises);
+    var exId = section.exerciseId;
+    var exLabel = names[exId] || exId || "Exercise";
+    ensureNotes(draft);
+    var sectionVal = exId && draft.sectionNotes[exId] ? draft.sectionNotes[exId] : "";
+    var hasSectionNote = !!(sectionVal && String(sectionVal).trim());
+    var noteOpen = hasSectionNote;
+    var ssId = section.supersetId;
+    var prevSec = secIdx > 0 ? sections[secIdx - 1] : null;
+    var canJoin = !!(prevSec && (!ssId || !prevSec.supersetId || prevSec.supersetId !== ssId));
+    var inGroup = !!ssId;
+
+    var workingNum = 0;
+    var rows = "";
+    for (var r = 0; r < section.indices.length; r++) {
+      var idx = section.indices[r];
+      var set = draft.sets[idx];
+      ensureSetShape(set);
+      var displayNum = workingNum + 1;
+      if (set.type !== "warmup") workingNum += 1;
+      else displayNum = Math.max(1, workingNum);
+      rows += renderSetRow(set, idx, section.localNums[r], unit, displayNum || 1);
+    }
+
+    var actions =
+      '<div class="row wrap ex-section-actions">' +
+      '<button type="button" class="btn sm" data-action="add-set-to-exercise" data-section-idx="' +
+      secIdx +
+      '">Add set</button>';
+    if (inGroup) {
+      actions +=
+        '<button type="button" class="btn sm secondary" data-action="ungroup-superset" data-section-idx="' +
+        secIdx +
+        '">Ungroup</button>';
+    } else if (canJoin && prevSec) {
+      actions +=
+        '<button type="button" class="btn sm secondary" data-action="join-superset" data-section-idx="' +
+        secIdx +
+        '">Superset with previous</button>';
+    }
+    actions += "</div>";
+
+    return (
+      '<div class="exercise-block' +
+      (inGroup ? " exercise-block--superset" : "") +
+      '" data-section-idx="' +
+      secIdx +
+      '" data-exercise-id="' +
+      esc(exId) +
+      '">' +
+      '<div class="ex-head">' +
+      '<select data-field="section-exerciseId" data-section-idx="' +
+      secIdx +
+      '" aria-label="Exercise">' +
+      exerciseOptionsHtml(exercises, exId) +
+      "</select>" +
+      "</div>" +
+      '<div class="set-head"><span>Set</span><span>Prev</span><span>Load</span><span>Reps</span><span></span></div>' +
+      rows +
+      actions +
+      '<div class="section-note" data-section-note-wrap="' +
+      esc(exId) +
+      '">' +
+      '<button type="button" class="btn block" data-action="toggle-section-note" aria-expanded="' +
+      (noteOpen ? "true" : "false") +
+      '">' +
+      (noteOpen ? "Hide note · " : "Add note · ") +
+      esc(exLabel) +
+      "</button>" +
+      '<label class="field' +
+      (noteOpen ? "" : " hidden") +
+      '" data-section-note-body style="margin-top:8px">' +
+      '<span class="lbl">How did ' +
+      esc(exLabel) +
+      " feel?</span>" +
+      '<textarea data-field="section-note" data-exercise-id="' +
+      esc(exId) +
+      '" rows="2" placeholder="Optional — form, pumps, sticking point">' +
+      esc(sectionVal) +
+      "</textarea></label></div>" +
+      "</div>"
+    );
   }
 
   function renderSetBlocks(exercises, unit) {
@@ -601,102 +1140,36 @@
     }
 
     ensureNotes(draft);
-    var seenNote = {};
-    var names = nameMap(exercises);
-    var html = '<div class="stack">';
-
-    for (var i = 0; i < sets.length; i++) {
-      var set = sets[i];
-      var hint = "";
-      if (set.targetRepsLabel || set.targetLoadKg != null) {
-        hint =
-          '<p class="muted small">Target: ' +
-          esc(
-            (set.targetLoadKg != null ? fmtWeight(set.targetLoadKg, unit) : "—") +
-              (set.targetRepsLabel ? " × " + set.targetRepsLabel : "")
-          ) +
-          "</p>";
+    var sections = groupExerciseSections(sets);
+    var html = "";
+    var i = 0;
+    while (i < sections.length) {
+      var sec = sections[i];
+      var ssId = sec.supersetId;
+      if (ssId) {
+        var groupEnd = i;
+        while (groupEnd + 1 < sections.length && sections[groupEnd + 1].supersetId === ssId) {
+          groupEnd += 1;
+        }
+        if (groupEnd > i) {
+          html +=
+            '<div class="superset" data-superset-id="' +
+            esc(ssId) +
+            '">' +
+            '<div class="superset-rail" aria-hidden="true"></div>' +
+            '<div class="superset-body">' +
+            '<div class="superset-head"><span class="superset-tag">Superset</span></div>';
+          for (var g = i; g <= groupEnd; g++) {
+            html += renderExerciseSection(sections[g], g, sections, exercises, unit);
+          }
+          html += "</div></div>";
+          i = groupEnd + 1;
+          continue;
+        }
       }
-      var showSectionNote = !!(set.exerciseId && !seenNote[set.exerciseId]);
-      if (showSectionNote) seenNote[set.exerciseId] = true;
-      var sectionVal =
-        set.exerciseId && draft.sectionNotes[set.exerciseId]
-          ? draft.sectionNotes[set.exerciseId]
-          : "";
-      var hasSectionNote = !!(sectionVal && String(sectionVal).trim());
-      var noteOpen = hasSectionNote;
-      var exLabel = names[set.exerciseId] || set.exerciseId || "exercise";
-
-      html +=
-        '<div class="exercise-block" data-set-idx="' +
-        i +
-        '"' +
-        (set.completed ? ' data-completed="1"' : "") +
-        ">" +
-        '<div class="ex-head">' +
-        '<select data-field="exerciseId" aria-label="Exercise for set ' +
-        (i + 1) +
-        '">' +
-        exerciseOptionsHtml(exercises, set.exerciseId) +
-        "</select>" +
-        '<button type="button" class="icon-btn del-set" data-action="remove-set" aria-label="Remove set ' +
-        (i + 1) +
-        '">&times;</button>' +
-        "</div>" +
-        hint +
-        '<div class="row wrap" style="gap:10px;align-items:flex-end">' +
-        '<label class="field grow" style="margin:0;min-width:40%">' +
-        '<span class="lbl">Load (' +
-        esc(unit) +
-        ")</span>" +
-        '<input type="number" class="load-num" inputmode="decimal" step="any" enterkeyhint="next" data-field="load" placeholder="0" value="' +
-        esc(kgToDisplay(set.loadKg, unit)) +
-        '" aria-label="Load in ' +
-        esc(unit) +
-        '" /></label>' +
-        '<label class="field grow" style="margin:0;min-width:28%">' +
-        '<span class="lbl">Reps</span>' +
-        '<input type="number" inputmode="numeric" step="1" enterkeyhint="done" data-field="reps" placeholder="0" value="' +
-        esc(set.reps != null ? set.reps : "") +
-        '" aria-label="Reps" /></label>' +
-        '<label class="field" style="margin:0;width:72px;flex:0 0 72px">' +
-        '<span class="lbl">RPE</span>' +
-        '<input type="number" inputmode="decimal" step="0.5" min="1" max="10" data-field="rpe" placeholder="—" value="' +
-        esc(set.rpe != null ? set.rpe : "") +
-        '" aria-label="RPE" /></label>' +
-        "</div>" +
-        (set.completed
-          ? '<div class="row spread" style="margin-top:10px">' +
-            '<span class="muted small">Set ' +
-            (i + 1) +
-            "</span>" +
-            '<span class="badge green">Completed</span></div>'
-          : '<button type="button" class="btn btn-primary block" data-action="complete-set" style="margin-top:10px" aria-label="Complete set ' +
-            (i + 1) +
-            '">Complete set</button>') +
-        (showSectionNote
-          ? '<div class="section-note" data-section-note-wrap="' +
-            esc(set.exerciseId) +
-            '">' +
-            '<button type="button" class="btn block" data-action="toggle-section-note" aria-expanded="' +
-            (noteOpen ? "true" : "false") +
-            '">' +
-            (noteOpen ? "Hide note · " : "Add note · ") +
-            esc(exLabel) +
-            "</button>" +
-            '<label class="field' +
-            (noteOpen ? "" : " hidden") +
-            '" data-section-note-body style="margin-top:8px">' +
-            '<span class="lbl">How did ' +
-            esc(exLabel) +
-            " feel?</span>" +
-            '<textarea data-field="section-note" rows="2" placeholder="Optional — form, pumps, sticking point">' +
-            esc(sectionVal) +
-            "</textarea></label></div>"
-          : "") +
-        "</div>";
+      html += renderExerciseSection(sec, i, sections, exercises, unit);
+      i += 1;
     }
-    html += "</div>";
     return html;
   }
 
@@ -735,16 +1208,34 @@
       return;
     }
 
+    var field = t.getAttribute("data-field");
+    if (field === "section-exerciseId") {
+      var secIdxChange = Number(t.getAttribute("data-section-idx"));
+      var sectionsChange = groupExerciseSections(draft.sets || []);
+      var secChange = sectionsChange[secIdxChange];
+      if (!secChange) return;
+      var newEx = t.value;
+      for (var ci = 0; ci < secChange.indices.length; ci++) {
+        draft.sets[secChange.indices[ci]].exerciseId = newEx;
+      }
+      paintLog(root);
+      return;
+    }
+
+    if (field === "section-note") {
+      ensureNotes(draft);
+      var noteEx = t.getAttribute("data-exercise-id");
+      if (noteEx) draft.sectionNotes[noteEx] = t.value || "";
+      return;
+    }
+
     var block = t.closest && t.closest("[data-set-idx]");
     if (!block) return;
     var idx = Number(block.getAttribute("data-set-idx"));
     if (!draft.sets[idx]) return;
-    var field = t.getAttribute("data-field");
     var unit = settings().unit;
-    if (field === "exerciseId") {
-      draft.sets[idx].exerciseId = t.value;
-      paintLog(root);
-    } else if (field === "load") {
+    ensureSetShape(draft.sets[idx]);
+    if (field === "load") {
       draft.sets[idx].loadKg = displayToKg(t.value, unit);
     } else if (field === "reps") {
       var reps = t.value === "" ? null : Number(t.value);
@@ -752,10 +1243,8 @@
     } else if (field === "rpe") {
       var rpe = t.value === "" ? null : Number(t.value);
       draft.sets[idx].rpe = rpe != null && !isNaN(rpe) ? rpe : null;
-    } else if (field === "section-note") {
-      ensureNotes(draft);
-      var exId = draft.sets[idx].exerciseId;
-      if (exId) draft.sectionNotes[exId] = t.value || "";
+    } else if (field === "set-note") {
+      draft.sets[idx].note = t.value || "";
     }
   }
 
@@ -778,7 +1267,8 @@
       }
     }
     if (next < 0) return;
-    var block = root.querySelector('[data-set-idx="' + next + '"]');
+    var block = root.querySelector('.set-row[data-set-idx="' + next + '"]');
+    if (!block) block = root.querySelector('[data-set-idx="' + next + '"]');
     if (!block) return;
     if (typeof block.scrollIntoView === "function") {
       block.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -793,6 +1283,14 @@
     }
   }
 
+  function applySupersetToSection(section, ssId) {
+    if (!section) return;
+    for (var i = 0; i < section.indices.length; i++) {
+      ensureSetShape(draft.sets[section.indices[i]]);
+      draft.sets[section.indices[i]].supersetId = ssId;
+    }
+  }
+
   function onLogClick(e) {
     var root = e.currentTarget;
     if (!draft || root.getAttribute("data-sl-view") !== "log") return;
@@ -803,15 +1301,70 @@
     var action = btn.getAttribute("data-action");
 
     if (action === "add-set") {
-      draft.sets.push({
-        exerciseId: "",
+      ensureWorkoutStarted();
+      var added = makeSet("", {
         loadKg: null,
         reps: null,
         rpe: null,
         completed: false,
-        targetLoadKg: null,
-        targetRepsLabel: "",
+        supersetId: null,
       });
+      added.targetLoadKg = null;
+      added.targetRepsLabel = "";
+      draft.sets.push(added);
+      paintLog(root);
+      return;
+    }
+
+    if (action === "add-set-to-exercise") {
+      ensureWorkoutStarted();
+      var addSecIdx = Number(btn.getAttribute("data-section-idx"));
+      var addSections = groupExerciseSections(draft.sets || []);
+      var addSec = addSections[addSecIdx];
+      if (!addSec) return;
+      var template = draft.sets[addSec.indices[addSec.indices.length - 1]];
+      var insertAt = addSec.indices[addSec.indices.length - 1] + 1;
+      var newRow = makeSet(addSec.exerciseId, {
+        loadKg: template && template.loadKg != null ? template.loadKg : null,
+        reps: null,
+        rpe: null,
+        completed: false,
+        supersetId: template ? template.supersetId : null,
+      });
+      newRow.targetLoadKg = null;
+      newRow.targetRepsLabel = "";
+      draft.sets.splice(insertAt, 0, newRow);
+      paintLog(root);
+      return;
+    }
+
+    if (action === "join-superset") {
+      var joinIdx = Number(btn.getAttribute("data-section-idx"));
+      var joinSections = groupExerciseSections(draft.sets || []);
+      var joinSec = joinSections[joinIdx];
+      var prevJoin = joinIdx > 0 ? joinSections[joinIdx - 1] : null;
+      if (!joinSec || !prevJoin) return;
+      var ss =
+        prevJoin.supersetId ||
+        joinSec.supersetId ||
+        newSupersetId();
+      applySupersetToSection(prevJoin, ss);
+      applySupersetToSection(joinSec, ss);
+      paintLog(root);
+      return;
+    }
+
+    if (action === "ungroup-superset") {
+      var ugIdx = Number(btn.getAttribute("data-section-idx"));
+      var ugSections = groupExerciseSections(draft.sets || []);
+      var ugSec = ugSections[ugIdx];
+      if (!ugSec || !ugSec.supersetId) return;
+      var ugId = ugSec.supersetId;
+      for (var ui = 0; ui < ugSections.length; ui++) {
+        if (ugSections[ui].supersetId === ugId) {
+          applySupersetToSection(ugSections[ui], null);
+        }
+      }
       paintLog(root);
       return;
     }
@@ -828,11 +1381,12 @@
 
     if (action === "new-session") {
       if (draft.sets && draft.sets.length) {
-        if (!confirm("Start a new session? Unsaved sets on this screen will be cleared.")) {
+        if (!confirm("Cancel this workout? Unsaved sets on this screen will be cleared.")) {
           return;
         }
       }
       hideOverlay();
+      endWorkoutClock(true);
       draft = emptyDraft();
       paintLog(root);
       return;
@@ -994,6 +1548,53 @@
     if (!block) return;
     var idx = Number(block.getAttribute("data-set-idx"));
     if (!draft.sets[idx]) return;
+    ensureSetShape(draft.sets[idx]);
+
+    if (action === "cycle-set-type") {
+      draft.sets[idx].type = cycleSetType(draft.sets[idx].type || "normal");
+      paintLog(root);
+      return;
+    }
+
+    if (action === "toggle-set-note") {
+      var noteWrap = btn.closest(".set-note");
+      if (!noteWrap) return;
+      var noteInput = noteWrap.querySelector(".set-note-input");
+      if (!noteInput) return;
+      var noteOpen = noteInput.classList.contains("hidden");
+      if (noteOpen) {
+        noteInput.classList.remove("hidden");
+        btn.setAttribute("aria-expanded", "true");
+        if (typeof noteInput.focus === "function") noteInput.focus();
+      } else {
+        noteInput.classList.add("hidden");
+        btn.setAttribute("aria-expanded", "false");
+      }
+      return;
+    }
+
+    if (action === "apply-prev-set") {
+      var sectionsPrev = groupExerciseSections(draft.sets || []);
+      var localIdx = 0;
+      var foundLocal = false;
+      for (var sp = 0; sp < sectionsPrev.length; sp++) {
+        for (var spi = 0; spi < sectionsPrev[sp].indices.length; spi++) {
+          if (sectionsPrev[sp].indices[spi] === idx) {
+            localIdx = sectionsPrev[sp].localNums[spi];
+            foundLocal = true;
+            break;
+          }
+        }
+        if (foundLocal) break;
+      }
+      var prevList = previousSetsFor(draft.sets[idx].exerciseId);
+      var prev = prevList[localIdx];
+      if (!prev) return;
+      if (prev.loadKg != null) draft.sets[idx].loadKg = prev.loadKg;
+      if (prev.reps != null) draft.sets[idx].reps = prev.reps;
+      paintLog(root);
+      return;
+    }
 
     if (action === "remove-set") {
       if (!confirm("Remove this set?")) return;
@@ -1005,6 +1606,7 @@
     if (action === "complete-set") {
       syncSetFromDom(block, idx);
       var set = draft.sets[idx];
+      ensureSetShape(set);
       if (!set.exerciseId) {
         alert("Pick an exercise for this set.");
         return;
@@ -1015,10 +1617,9 @@
         if (repsEl && typeof repsEl.focus === "function") repsEl.focus();
         return;
       }
+      ensureWorkoutStarted();
       set.completed = true;
-      var rest = settings().restSeconds;
-      // Start rest immediately — do not wait on async paint
-      if (rest > 0 && SL.timer) showRestTimer(rest);
+      startRestForExercise(set.exerciseId);
       pendingScrollSetIdx = idx;
       paintLog(root);
     }
@@ -1036,11 +1637,20 @@
     var unit = settings().unit;
     var set = draft.sets[idx];
     if (!set) return;
-    var ex = block.querySelector('[data-field="exerciseId"]');
-    var load = block.querySelector('[data-field="load"]');
-    var reps = block.querySelector('[data-field="reps"]');
-    var rpe = block.querySelector('[data-field="rpe"]');
-    if (ex) set.exerciseId = ex.value;
+    ensureSetShape(set);
+    var row =
+      block.classList && block.classList.contains("set-row")
+        ? block
+        : block.closest
+          ? block.closest(".set-row") || block
+          : block;
+    var meta = row.parentNode
+      ? row.parentNode.querySelector('.set-row-meta[data-set-idx="' + idx + '"]')
+      : null;
+    var load = row.querySelector('[data-field="load"]');
+    var reps = row.querySelector('[data-field="reps"]');
+    var rpe = meta ? meta.querySelector('[data-field="rpe"]') : row.querySelector('[data-field="rpe"]');
+    var note = meta ? meta.querySelector('[data-field="set-note"]') : null;
     if (load) set.loadKg = displayToKg(load.value, unit);
     if (reps) {
       var r = reps.value === "" ? null : Number(reps.value);
@@ -1050,6 +1660,7 @@
       var rp = rpe.value === "" ? null : Number(rpe.value);
       set.rpe = rp != null && !isNaN(rp) ? rp : null;
     }
+    if (note) set.note = note.value || "";
   }
 
   function syncAllFromDom(root) {
@@ -1061,14 +1672,15 @@
     if (dateEl) draft.dateISO = dateEl.value || todayISO();
     if (bwEl) draft.bodyweightKg = displayToKg(bwEl.value, settings().unit);
     if (noteEl) draft.note = noteEl.value || "";
-    var blocks = root.querySelectorAll("[data-set-idx]");
-    for (var i = 0; i < blocks.length; i++) {
-      var idx = Number(blocks[i].getAttribute("data-set-idx"));
-      syncSetFromDom(blocks[i], idx);
-      var ta = blocks[i].querySelector('[data-field="section-note"]');
-      if (ta && draft.sets[idx] && draft.sets[idx].exerciseId) {
-        draft.sectionNotes[draft.sets[idx].exerciseId] = ta.value || "";
-      }
+    var rows = root.querySelectorAll(".set-row[data-set-idx]");
+    for (var i = 0; i < rows.length; i++) {
+      var idx = Number(rows[i].getAttribute("data-set-idx"));
+      syncSetFromDom(rows[i], idx);
+    }
+    var sectionNotes = root.querySelectorAll('[data-field="section-note"]');
+    for (var sn = 0; sn < sectionNotes.length; sn++) {
+      var ex = sectionNotes[sn].getAttribute("data-exercise-id");
+      if (ex) draft.sectionNotes[ex] = sectionNotes[sn].value || "";
     }
   }
 
@@ -1079,19 +1691,22 @@
     var outSets = [];
     for (var i = 0; i < draft.sets.length; i++) {
       var set = draft.sets[i];
+      ensureSetShape(set);
       if (!set.exerciseId) continue;
       if (set.reps == null || set.reps === "") continue;
       var completed = markAllComplete ? true : !!set.completed;
       if (!completed && !markAllComplete) {
-        // still include filled sets as completed when saving mid-workout
         completed = true;
       }
-      var row = {
-        exerciseId: set.exerciseId,
+      var row = makeSet(set.exerciseId, {
         loadKg: set.loadKg != null ? Number(set.loadKg) : 0,
         reps: Number(set.reps),
         completed: true,
-      };
+        type: set.type || "normal",
+        note: typeof set.note === "string" ? set.note : "",
+        supersetId: set.supersetId != null ? set.supersetId : null,
+      });
+      if (set.id) row.id = set.id;
       if (set.rpe != null && set.rpe !== "") row.rpe = Number(set.rpe);
       outSets.push(row);
     }
@@ -1108,6 +1723,12 @@
       if (eid && draft.sectionNotes[eid]) sectionNotes[eid] = draft.sectionNotes[eid];
     }
 
+    ensureWorkoutStarted();
+    var endedAt = Date.now();
+    var startedAt = Number(draft.startedAt) || endedAt;
+    var durationSec = Math.max(0, Math.round((endedAt - startedAt) / 1000));
+    endWorkoutClock(false);
+
     var sess = {
       id: draft.id || uid(),
       dateISO: draft.dateISO || todayISO(),
@@ -1115,6 +1736,9 @@
       note: draft.note || "",
       sectionNotes: sectionNotes,
       sets: outSets,
+      startedAt: startedAt,
+      endedAt: endedAt,
+      durationSec: durationSec,
     };
     if (draft.programId) sess.programId = draft.programId;
     if (draft.dayId) sess.dayId = draft.dayId;
@@ -1140,8 +1764,14 @@
     }
 
     hideOverlay();
-    draft = emptyDraft();
-    if (typeof SL.navigate === "function") {
+    draft = null;
+    if (
+      SL.views &&
+      SL.views.summary &&
+      typeof SL.navigate === "function"
+    ) {
+      SL.navigate("summary", { sessionId: sess.id });
+    } else if (typeof SL.navigate === "function") {
       SL.navigate("history");
     } else if (typeof SL.refresh === "function") {
       SL.refresh();
@@ -1151,8 +1781,12 @@
   function paintLog(root) {
     ensureOverlay();
     if (!draft) draft = emptyDraft();
+    if (draft.sets && draft.sets.length && (draft.startedAt == null || isNaN(Number(draft.startedAt)))) {
+      ensureWorkoutStarted();
+    }
     var s = settings();
     var unit = s.unit;
+    var volStats = draftVolumeStats();
     var program = SL.store.getActiveProgram();
     var day =
       program &&
@@ -1240,10 +1874,16 @@
       }
 
       root.innerHTML =
-        '<div class="stack stack-lg">' +
+        '<div class="stack stack-lg log-session-layout">' +
+        '<div class="card log-workout-clock-card">' +
+        '<div class="log-workout-clock-row">' +
+        '<span class="lbl">Workout time</span>' +
+        '<span id="log-workout-clock" class="log-workout-clock mono" aria-live="polite">' +
+        esc(formatElapsed(workoutElapsedMs())) +
+        "</span></div></div>" +
         '<div class="card">' +
         '<div class="card-head"><h2 class="card-title" style="margin:0">Session</h2>' +
-        '<button type="button" class="btn sm" data-action="new-session">New</button></div>' +
+        '<button type="button" class="btn sm secondary" data-action="new-session">Cancel</button></div>' +
         '<label class="field"><span class="lbl">Date</span>' +
         '<input type="date" id="log-date" value="' +
         esc(draft.dateISO || todayISO()) +
@@ -1266,18 +1906,30 @@
         "</textarea></label>" +
         "</div>" +
         '<div class="card">' +
-        "<h2>Sets</h2>" +
+        '<div class="card-head"><h2 class="card-title" style="margin:0">Sets</h2>' +
+        '<span class="muted small log-volume-meta">' +
+        esc(volStats.working + " working") +
+        " · " +
+        esc(fmtWeight(volStats.volumeKg, unit)) +
+        "</span></div>" +
         renderSetBlocks(exercises, unit) +
-        '<button type="button" class="btn block" data-action="add-set" style="margin-top:8px">Add set</button>' +
+        '<button type="button" class="btn block" data-action="add-set" style="margin-top:8px">Add exercise</button>' +
         "</div>" +
-        '<div class="stack">' +
-        '<button type="button" class="btn btn-primary block" data-action="complete-session">Complete session</button>' +
+        '<div class="stack log-session-actions">' +
         '<button type="button" class="btn block" data-action="save-session">Save session</button>' +
         "</div>" +
         "</div>";
 
       root.setAttribute("data-sl-view", "log");
       bindLog(root);
+      if (draft.startedAt != null) {
+        startWorkoutClockTick();
+        ensureCompleteFab();
+      } else {
+        stopWorkoutClockTick();
+        removeCompleteFab();
+        syncWorkoutClockUI();
+      }
       if (pendingScrollSetIdx != null) {
         var fromIdx = pendingScrollSetIdx;
         pendingScrollSetIdx = null;
@@ -1368,6 +2020,14 @@
       var action = actionBtn.getAttribute("data-hist-action");
       if (action === "goto-log") {
         if (SL.navigate) SL.navigate("log");
+        return;
+      }
+      if (action === "goto-summary") {
+        var sumId = actionBtn.getAttribute("data-session-id") || historyDetailId;
+        if (!sumId) return;
+        if (SL.views && SL.views.summary && typeof SL.navigate === "function") {
+          SL.navigate("summary", { sessionId: sumId });
+        }
         return;
       }
       if (action === "back") {
@@ -1626,27 +2286,43 @@
       var exId = exIds[e];
       var exRows = "";
       var n = 0;
+      var workingNum = 0;
       for (var j = 0; j < sets.length; j++) {
         var set = sets[j];
         if (set.exerciseId !== exId) continue;
         n += 1;
+        var st = set.type || "normal";
+        if (st !== "warmup") workingNum += 1;
+        var marker = setTypeMarker(st, workingNum || 1);
+        var typeCls = setTypeClass(st);
+        var setNote =
+          typeof set.note === "string" && String(set.note).trim()
+            ? '<div class="set-note hist-set-note">' + esc(set.note) + "</div>"
+            : "";
         exRows +=
-          "<tr><td>" +
-          n +
-          "</td><td>" +
+          "<tr class=\"" +
+          (st === "warmup" ? "set-row--warmup" : "") +
+          '"><td><span class="' +
+          typeCls +
+          '">' +
+          esc(marker) +
+          "</span></td><td>" +
           esc(fmtWeight(set.loadKg, unit)) +
           "</td><td>" +
-          esc(set.reps != null ? set.reps : "—") +
+          esc(set.reps != null ? set.reps : "\u2014") +
           "</td><td>" +
-          esc(set.rpe != null ? set.rpe : "—") +
-          "</td></tr>";
+          esc(set.rpe != null ? set.rpe : "\u2014") +
+          "</td></tr>" +
+          (setNote
+            ? '<tr class="hist-set-note-row"><td colspan="4">' + setNote + "</td></tr>"
+            : "");
       }
       sectionsHtml +=
         '<div class="card section-card">' +
         "<h2>" +
         esc(names[exId] || exId) +
         "</h2>" +
-        '<table class="detail-set-table"><thead><tr><th>#</th><th>Load</th><th>Reps</th><th>RPE</th></tr></thead><tbody>' +
+        '<table class="detail-set-table"><thead><tr><th>Set</th><th>Load</th><th>Reps</th><th>RPE</th></tr></thead><tbody>' +
         exRows +
         "</tbody></table>" +
         '<label class="field section-note"><span class="lbl">Your note</span>' +
@@ -1660,6 +2336,13 @@
     root.setAttribute("data-sl-view", "history");
     bindHistory(root);
 
+    var summaryLink =
+      SL.views && SL.views.summary
+        ? '<button type="button" class="btn block" data-hist-action="goto-summary" data-session-id="' +
+          esc(sess.id) +
+          '">View summary</button>'
+        : "";
+
     root.innerHTML =
       '<div class="stack stack-lg">' +
       '<button type="button" class="btn sm" data-hist-action="back">Back to calendar</button>' +
@@ -1668,7 +2351,10 @@
       esc(sess.dateISO || "") +
       "</div>" +
       '<span class="muted">' +
-      esc(sess.bodyweightKg != null ? fmtWeight(sess.bodyweightKg, unit) : "bw —") +
+      esc(sess.bodyweightKg != null ? fmtWeight(sess.bodyweightKg, unit) : "bw \u2014") +
+      (sess.durationSec != null && sess.durationSec > 0
+        ? " · " + formatElapsed(sess.durationSec * 1000)
+        : "") +
       "</span></div>" +
       '<label class="field"><span class="lbl">Session note</span>' +
       '<textarea id="hist-session-note" rows="3" placeholder="Your opinion on this session overall">' +
@@ -1677,6 +2363,7 @@
       "</div>" +
       (sectionsHtml || '<div class="card"><p class="muted">No sets logged.</p></div>') +
       '<div class="stack">' +
+      summaryLink +
       '<button type="button" class="btn btn-primary block" data-hist-action="save-notes" data-session-id="' +
       esc(sess.id) +
       '">Save notes</button>' +
@@ -1690,6 +2377,13 @@
   }
 
   function paintHistory(root) {
+    stopWorkoutClockTick();
+    removeCompleteFab();
+    var meta = document.getElementById("topbar-meta");
+    if (meta) {
+      meta.textContent = "";
+      meta.classList.remove("workout-clock");
+    }
     SL.store.listExercises().then(function (exercises) {
       if (SL.app && SL.app.currentTab && SL.app.currentTab !== "history") return;
       exercises = exercises || [];

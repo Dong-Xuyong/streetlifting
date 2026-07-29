@@ -5,12 +5,22 @@
   window.SL = window.SL || {};
 
   var STORAGE_KEY = "streetlifting-v1";
+  var BACKUP_KEY = "streetlifting-v1-backup";
+  var SCHEMA_VERSION = 2;
   var EXERCISES_URL = "data/exercises.json";
   var SQUAT_CYCLE_URL = "data/squat-1rm-cycle.json";
   var PULLUP_WAVE_URL = "data/pullup-wave-cycle.json";
   var DIP_WAVE_URL = "data/dip-wave-cycle.json";
 
+  var BW_LOADED_IDS = {
+    pullup: true,
+    dip: true,
+    muscleup: true,
+    chinup: true,
+  };
+
   var state = null;
+  var revisionCounter = 0;
   var builtinsCache = null;
   var builtinsPromise = null;
   var squatSchemeCache = null;
@@ -40,11 +50,16 @@
 
   function defaults() {
     return {
+      version: SCHEMA_VERSION,
       settings: {
         unit: "kg",
         restSeconds: 180,
         bodyweightKg: null,
+        autoStartRest: true,
+        vibrate: true,
+        plateStack: null,
       },
+      exerciseSettings: {},
       customExercises: [],
       programs: [],
       sessions: [],
@@ -75,10 +90,15 @@
     return out;
   }
 
+  function hasOwn(obj, key) {
+    return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
   /** Top-level shape check: salvageable exports pass; junk types fail. */
   function validateStore(data) {
     if (!isPlainObject(data)) return false;
     if (data.settings != null && !isPlainObject(data.settings)) return false;
+    if (data.exerciseSettings != null && !isPlainObject(data.exerciseSettings)) return false;
     if (data.customExercises != null && !Array.isArray(data.customExercises)) return false;
     if (data.programs != null && !Array.isArray(data.programs)) return false;
     if (data.sessions != null && !Array.isArray(data.sessions)) return false;
@@ -92,6 +112,17 @@
       if (isFinite(n)) return n;
     }
     return null;
+  }
+
+  function normalizePlateStack(raw) {
+    if (raw === null) return null;
+    if (!Array.isArray(raw)) return null;
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      var n = coerceFiniteNumber(raw[i]);
+      if (n != null) out.push(n);
+    }
+    return out;
   }
 
   function normalizeSettings(rawSettings) {
@@ -111,7 +142,31 @@
       var bw = coerceFiniteNumber(rawSettings.bodyweightKg);
       if (bw != null) s.bodyweightKg = bw;
     }
+    if (typeof rawSettings.autoStartRest === "boolean") {
+      s.autoStartRest = rawSettings.autoStartRest;
+    }
+    if (typeof rawSettings.vibrate === "boolean") {
+      s.vibrate = rawSettings.vibrate;
+    }
+    if (hasOwn(rawSettings, "plateStack")) {
+      s.plateStack = normalizePlateStack(rawSettings.plateStack);
+    }
     return s;
+  }
+
+  function normalizeSet(set) {
+    if (!isPlainObject(set)) return null;
+    ensureId(set);
+    if (
+      set.type !== "normal" &&
+      set.type !== "warmup" &&
+      set.type !== "drop" &&
+      set.type !== "failure"
+    ) {
+      set.type = "normal";
+    }
+    if (!hasOwn(set, "supersetId")) set.supersetId = null;
+    return set;
   }
 
   function normalizeSession(sess) {
@@ -119,6 +174,15 @@
     if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
     if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
     if (!Array.isArray(sess.sets)) sess.sets = [];
+    if (!hasOwn(sess, "startedAt")) sess.startedAt = null;
+    if (!hasOwn(sess, "endedAt")) sess.endedAt = null;
+    if (!hasOwn(sess, "durationSec")) sess.durationSec = null;
+    var kept = [];
+    for (var i = 0; i < sess.sets.length; i++) {
+      var set = normalizeSet(sess.sets[i]);
+      if (set) kept.push(set);
+    }
+    sess.sets = kept;
     return sess;
   }
 
@@ -129,11 +193,87 @@
     return p;
   }
 
+  function normalizeExerciseSettings(raw) {
+    if (!isPlainObject(raw)) return {};
+    var out = {};
+    for (var id in raw) {
+      if (!hasOwn(raw, id)) continue;
+      var entry = raw[id];
+      if (!isPlainObject(entry)) continue;
+      var rest = null;
+      if (entry.restSeconds != null) {
+        var n = coerceFiniteNumber(entry.restSeconds);
+        if (n != null) {
+          if (n < 0) n = 0;
+          rest = Math.round(n);
+        }
+      }
+      out[id] = {
+        restSeconds: rest,
+        favorite: !!entry.favorite,
+      };
+    }
+    return out;
+  }
+
+  function needsMigration(data) {
+    if (!isPlainObject(data)) return true;
+    var v = coerceFiniteNumber(data.version);
+    return v == null || v < SCHEMA_VERSION;
+  }
+
+  function backupV1Once(rawString) {
+    try {
+      if (localStorage.getItem(BACKUP_KEY) != null) return;
+      localStorage.setItem(BACKUP_KEY, rawString);
+    } catch (e) {
+      /* ignore backup failures */
+    }
+  }
+
+  /**
+   * Migrate a parsed store blob to v2 in place.
+   * Preserves unknown fields on programs/sessions/sets.
+   */
+  function migrateToV2(data) {
+    if (!isPlainObject(data)) return defaults();
+    if (!needsMigration(data)) return data;
+
+    if (!isPlainObject(data.settings)) data.settings = {};
+    if (!hasOwn(data.settings, "autoStartRest")) data.settings.autoStartRest = true;
+    if (!hasOwn(data.settings, "vibrate")) data.settings.vibrate = true;
+    if (!hasOwn(data.settings, "plateStack")) data.settings.plateStack = null;
+
+    if (!isPlainObject(data.exerciseSettings)) data.exerciseSettings = {};
+
+    var sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    for (var i = 0; i < sessions.length; i++) {
+      var sess = sessions[i];
+      if (!isPlainObject(sess)) continue;
+      if (!hasOwn(sess, "startedAt")) sess.startedAt = null;
+      if (!hasOwn(sess, "endedAt")) sess.endedAt = null;
+      if (!hasOwn(sess, "durationSec")) sess.durationSec = null;
+      var sets = Array.isArray(sess.sets) ? sess.sets : [];
+      for (var j = 0; j < sets.length; j++) {
+        var set = sets[j];
+        if (!isPlainObject(set)) continue;
+        ensureId(set);
+        if (!hasOwn(set, "type")) set.type = "normal";
+        if (!hasOwn(set, "supersetId")) set.supersetId = null;
+      }
+    }
+
+    data.version = SCHEMA_VERSION;
+    return data;
+  }
+
   function normalizeLoaded(raw) {
     var d = defaults();
     if (!isPlainObject(raw)) return d;
 
+    d.version = SCHEMA_VERSION;
     d.settings = normalizeSettings(raw.settings);
+    d.exerciseSettings = normalizeExerciseSettings(raw.exerciseSettings);
     d.customExercises = filterPlainObjects(raw.customExercises);
 
     var programs = filterPlainObjects(raw.programs);
@@ -153,6 +293,7 @@
   /** Fill missing settings / array roots in place (stable object identity for views). */
   function ensureStateShape(s) {
     if (!isPlainObject(s)) return defaults();
+    s.version = SCHEMA_VERSION;
     if (!isPlainObject(s.settings)) {
       s.settings = defaults().settings;
     } else {
@@ -160,7 +301,14 @@
       s.settings.unit = fixed.unit;
       s.settings.restSeconds = fixed.restSeconds;
       s.settings.bodyweightKg = fixed.bodyweightKg;
+      s.settings.autoStartRest = fixed.autoStartRest;
+      s.settings.vibrate = fixed.vibrate;
+      if (!hasOwn(s.settings, "plateStack")) s.settings.plateStack = fixed.plateStack;
+      else if (s.settings.plateStack !== null && !Array.isArray(s.settings.plateStack)) {
+        s.settings.plateStack = fixed.plateStack;
+      }
     }
+    if (!isPlainObject(s.exerciseSettings)) s.exerciseSettings = {};
     if (!Array.isArray(s.customExercises)) s.customExercises = [];
     if (!Array.isArray(s.programs)) s.programs = [];
     if (!Array.isArray(s.sessions)) s.sessions = [];
@@ -186,13 +334,48 @@
     return builtinsPromise;
   }
 
+  function getBuiltins() {
+    return Array.isArray(builtinsCache) ? builtinsCache : [];
+  }
+
+  function exerciseById(id) {
+    if (id == null || id === "") return null;
+    var builtins = getBuiltins();
+    var i;
+    for (i = 0; i < builtins.length; i++) {
+      if (builtins[i] && builtins[i].id === id) return builtins[i];
+    }
+    var custom = [];
+    try {
+      custom = filterPlainObjects((state || load()).customExercises);
+    } catch (e) {
+      custom = [];
+    }
+    for (i = 0; i < custom.length; i++) {
+      if (custom[i] && custom[i].id === id) return custom[i];
+    }
+    return null;
+  }
+
   function load() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         var parsed = JSON.parse(raw);
-        // Salvage partial / corrupt blobs; wipe only if not an object root.
-        state = isPlainObject(parsed) ? normalizeLoaded(parsed) : defaults();
+        if (!isPlainObject(parsed)) {
+          state = defaults();
+        } else {
+          if (needsMigration(parsed)) {
+            backupV1Once(raw);
+            migrateToV2(parsed);
+          }
+          state = normalizeLoaded(parsed);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          } catch (saveErr) {
+            /* never throw during load */
+          }
+        }
       } else {
         state = defaults();
       }
@@ -205,11 +388,18 @@
   function save() {
     if (!state) state = defaults();
     ensureStateShape(state);
+    state.version = SCHEMA_VERSION;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
       throw new Error("Failed to save (storage full or unavailable)");
     }
+    revisionCounter++;
+  }
+
+  /** Bumped on every write so derived caches (SL.prs) know when to recompute. */
+  function revision() {
+    return revisionCounter;
   }
 
   function get() {
@@ -321,6 +511,15 @@
     if (!Array.isArray(sess.sets)) sess.sets = [];
     if (typeof sess.note !== "string") sess.note = sess.note != null ? String(sess.note) : "";
     if (!isPlainObject(sess.sectionNotes)) sess.sectionNotes = {};
+    if (!hasOwn(sess, "startedAt")) sess.startedAt = null;
+    if (!hasOwn(sess, "endedAt")) sess.endedAt = null;
+    if (!hasOwn(sess, "durationSec")) sess.durationSec = null;
+    var kept = [];
+    for (var si = 0; si < sess.sets.length; si++) {
+      var set = normalizeSet(sess.sets[si]);
+      if (set) kept.push(set);
+    }
+    sess.sets = kept;
     var s = get();
     var i = s.sessions.findIndex(function (x) {
       return x && x.id === sess.id;
@@ -365,9 +564,10 @@
       return 0;
     });
     var payload = {
-      version: 1,
+      version: SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       settings: cloneJson(s.settings),
+      exerciseSettings: cloneJson(s.exerciseSettings || {}),
       customExercises: cloneJson(s.customExercises || []),
       programs: programs,
       sessions: sessions,
@@ -389,12 +589,310 @@
     if (!validateStore(parsed)) {
       throw new Error("Invalid store shape");
     }
-    // Accept v1 backups and legacy flat store blobs (both carry programs + sessions).
+    // Accept v1 backups, v2 backups, and legacy flat store blobs.
+    if (needsMigration(parsed)) {
+      migrateToV2(parsed);
+    }
     state = normalizeLoaded(parsed);
     save();
     return {
       state: state,
       counts: backupCounts(state),
+    };
+  }
+
+  function getExerciseSettings(exerciseId) {
+    var fallback = { restSeconds: null, favorite: false };
+    if (exerciseId == null || exerciseId === "") return fallback;
+    var s = get();
+    var es = s.exerciseSettings && s.exerciseSettings[exerciseId];
+    if (!isPlainObject(es)) return fallback;
+    var rest = null;
+    if (es.restSeconds != null) {
+      var n = coerceFiniteNumber(es.restSeconds);
+      if (n != null) {
+        if (n < 0) n = 0;
+        rest = Math.round(n);
+      }
+    }
+    return { restSeconds: rest, favorite: !!es.favorite };
+  }
+
+  function setExerciseSettings(exerciseId, patch) {
+    var fallback = { restSeconds: null, favorite: false };
+    if (exerciseId == null || exerciseId === "") return fallback;
+    var s = get();
+    if (!isPlainObject(s.exerciseSettings)) s.exerciseSettings = {};
+    var cur = getExerciseSettings(exerciseId);
+    if (isPlainObject(patch)) {
+      if (hasOwn(patch, "restSeconds")) {
+        if (patch.restSeconds == null) {
+          cur.restSeconds = null;
+        } else {
+          var n = coerceFiniteNumber(patch.restSeconds);
+          if (n != null) {
+            if (n < 0) n = 0;
+            cur.restSeconds = Math.round(n);
+          }
+        }
+      }
+      if (hasOwn(patch, "favorite")) {
+        cur.favorite = !!patch.favorite;
+      }
+    }
+    s.exerciseSettings[exerciseId] = {
+      restSeconds: cur.restSeconds,
+      favorite: cur.favorite,
+    };
+    save();
+    return s.exerciseSettings[exerciseId];
+  }
+
+  function restSecondsFor(exerciseId) {
+    var es = getExerciseSettings(exerciseId);
+    if (es.restSeconds != null && isFinite(es.restSeconds)) {
+      return Math.round(es.restSeconds);
+    }
+    var ex = exerciseById(exerciseId);
+    if (ex) {
+      var d = coerceFiniteNumber(ex.defaultRestSeconds);
+      if (d != null) {
+        if (d < 0) d = 0;
+        return Math.round(d);
+      }
+    }
+    var s = get().settings;
+    var g = coerceFiniteNumber(s && s.restSeconds);
+    if (g != null) {
+      if (g < 0) g = 0;
+      return Math.round(g);
+    }
+    return 180;
+  }
+
+  function toggleFavorite(exerciseId) {
+    var es = getExerciseSettings(exerciseId);
+    var next = !es.favorite;
+    setExerciseSettings(exerciseId, { favorite: next });
+    return next;
+  }
+
+  function listFavorites() {
+    var s = get();
+    var es = s.exerciseSettings;
+    if (!isPlainObject(es)) return [];
+    var out = [];
+    for (var id in es) {
+      if (!hasOwn(es, id)) continue;
+      if (es[id] && es[id].favorite) out.push(id);
+    }
+    return out;
+  }
+
+  function newSet(exerciseId, patch) {
+    var set = {
+      exerciseId: exerciseId == null ? null : exerciseId,
+      loadKg: 0,
+      reps: 0,
+      completed: false,
+      type: "normal",
+      supersetId: null,
+    };
+    ensureId(set);
+    if (isPlainObject(patch)) {
+      for (var k in patch) {
+        if (hasOwn(patch, k)) set[k] = patch[k];
+      }
+    }
+    if (!set.id) ensureId(set);
+    if (
+      set.type !== "normal" &&
+      set.type !== "warmup" &&
+      set.type !== "drop" &&
+      set.type !== "failure"
+    ) {
+      set.type = "normal";
+    }
+    if (!hasOwn(set, "supersetId")) set.supersetId = null;
+    return set;
+  }
+
+  function countsForVolume(set) {
+    if (!set || typeof set !== "object") return false;
+    if (set.completed === false) return false;
+    if (set.type === "warmup") return false;
+    return true;
+  }
+
+  function isBodyweightLoaded(exerciseId) {
+    if (exerciseId == null) return false;
+    if (BW_LOADED_IDS[exerciseId]) return true;
+    var ex = exerciseById(exerciseId);
+    if (!ex) return false;
+    return ex.equipment === "bodyweight" || ex.equipment === "belt";
+  }
+
+  function setVolumeKg(set, bodyweightKg) {
+    if (!countsForVolume(set)) return 0;
+    var load = Number(set.loadKg) || 0;
+    var reps = Number(set.reps) || 0;
+    if (isBodyweightLoaded(set.exerciseId)) {
+      var bw = Number(bodyweightKg) || 0;
+      return (bw + load) * reps;
+    }
+    return load * reps;
+  }
+
+  function previousSetsFor(exerciseId, excludeSessionId) {
+    if (exerciseId == null || exerciseId === "") return [];
+    var sessions;
+    try {
+      sessions = listSessions();
+    } catch (e) {
+      return [];
+    }
+    for (var i = 0; i < sessions.length; i++) {
+      var sess = sessions[i];
+      if (!sess) continue;
+      if (excludeSessionId != null && sess.id === excludeSessionId) continue;
+      var sets = Array.isArray(sess.sets) ? sess.sets : [];
+      var matched = [];
+      for (var j = 0; j < sets.length; j++) {
+        var set = sets[j];
+        if (!set || typeof set !== "object") continue;
+        if (set.exerciseId !== exerciseId) continue;
+        var annotated = cloneJson(set);
+        annotated.dateISO = sess.dateISO;
+        annotated.bodyweightKg = sess.bodyweightKg;
+        matched.push(annotated);
+      }
+      if (matched.length) return matched;
+    }
+    return [];
+  }
+
+  function emptySessionSummary() {
+    return {
+      durationSec: null,
+      totalVolumeKg: 0,
+      setCount: 0,
+      workingSetCount: 0,
+      exerciseCount: 0,
+      perExercise: [],
+      muscleSplit: [],
+    };
+  }
+
+  function findSession(sessionOrId) {
+    if (isPlainObject(sessionOrId)) return sessionOrId;
+    if (sessionOrId == null || sessionOrId === "") return null;
+    var list = filterPlainObjects(get().sessions);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === sessionOrId) return list[i];
+    }
+    return null;
+  }
+
+  function sessionSummary(sessionOrId) {
+    var sess;
+    try {
+      sess = findSession(sessionOrId);
+    } catch (e) {
+      return emptySessionSummary();
+    }
+    if (!sess) return emptySessionSummary();
+
+    var sets = Array.isArray(sess.sets) ? sess.sets : [];
+    var bw = sess.bodyweightKg;
+    var setCount = 0;
+    var workingSetCount = 0;
+    var totalVolumeKg = 0;
+    var byEx = {};
+    var exOrder = [];
+
+    for (var i = 0; i < sets.length; i++) {
+      var set = sets[i];
+      if (!set || typeof set !== "object") continue;
+      if (set.completed === false) continue;
+      setCount += 1;
+      if (!countsForVolume(set)) continue;
+      workingSetCount += 1;
+      var vol = setVolumeKg(set, bw);
+      totalVolumeKg += vol;
+      var exId = set.exerciseId;
+      if (exId == null) continue;
+      if (!byEx[exId]) {
+        byEx[exId] = {
+          exerciseId: exId,
+          sets: 0,
+          volumeKg: 0,
+          topSet: null,
+          topE1rm: -Infinity,
+        };
+        exOrder.push(exId);
+      }
+      var bucket = byEx[exId];
+      bucket.sets += 1;
+      bucket.volumeKg += vol;
+      var e = e1rm(bw, set.loadKg, set.reps);
+      if (e > bucket.topE1rm) {
+        bucket.topE1rm = e;
+        bucket.topSet = set;
+      }
+    }
+
+    var perExercise = [];
+    var muscleMap = {};
+    for (var oi = 0; oi < exOrder.length; oi++) {
+      var b = byEx[exOrder[oi]];
+      perExercise.push({
+        exerciseId: b.exerciseId,
+        sets: b.sets,
+        volumeKg: b.volumeKg,
+        topSet: b.topSet,
+      });
+      var ex = exerciseById(b.exerciseId);
+      var muscles = ex && Array.isArray(ex.muscles) ? ex.muscles : [];
+      if (muscles.length && b.volumeKg) {
+        var share = b.volumeKg / muscles.length;
+        for (var mi = 0; mi < muscles.length; mi++) {
+          var m = muscles[mi];
+          if (m == null || m === "") continue;
+          muscleMap[m] = (muscleMap[m] || 0) + share;
+        }
+      }
+    }
+
+    var muscleSplit = [];
+    for (var muscle in muscleMap) {
+      if (!hasOwn(muscleMap, muscle)) continue;
+      var mv = muscleMap[muscle];
+      muscleSplit.push({
+        muscle: muscle,
+        volumeKg: mv,
+        pct: totalVolumeKg > 0 ? (mv / totalVolumeKg) * 100 : 0,
+      });
+    }
+    muscleSplit.sort(function (a, b) {
+      return b.volumeKg - a.volumeKg;
+    });
+
+    var durationSec = sess.durationSec;
+    if (durationSec != null) {
+      var d = coerceFiniteNumber(durationSec);
+      durationSec = d != null ? Math.round(d) : null;
+    } else {
+      durationSec = null;
+    }
+
+    return {
+      durationSec: durationSec,
+      totalVolumeKg: totalVolumeKg,
+      setCount: setCount,
+      workingSetCount: workingSetCount,
+      exerciseCount: perExercise.length,
+      perExercise: perExercise,
+      muscleSplit: muscleSplit,
     };
   }
 
@@ -425,6 +923,7 @@
         if (!set || typeof set !== "object") continue;
         if (set.exerciseId !== exerciseId) continue;
         if (set.completed === false) continue;
+        if (set.type === "warmup") continue;
         out.push({
           dateISO: sess.dateISO,
           bodyweightKg: bw,
@@ -825,7 +1324,7 @@
     return { program: program, retreated: true, atStart: program.phaseIndex <= 0 };
   }
 
-  /** End full cycle: back to first phase (3×10) and +microStepKg on intensive load. */
+  /** End full cycle: back to first phase (3x10) and +microStepKg on intensive load. */
   function finishPullupCycle(programOrId) {
     var program =
       typeof programOrId === "string" ? findProgramById(programOrId) : programOrId;
@@ -857,6 +1356,7 @@
     save: save,
     get: get,
     reset: reset,
+    revision: revision,
     listExercises: listExercises,
     upsertCustomExercise: upsertCustomExercise,
     deleteCustomExercise: deleteCustomExercise,
@@ -893,6 +1393,17 @@
     finishPullupCycle: finishPullupCycle,
     pullupWaveAtPeak: pullupWaveAtPeak,
     todayISO: todayISO,
+    getExerciseSettings: getExerciseSettings,
+    setExerciseSettings: setExerciseSettings,
+    restSecondsFor: restSecondsFor,
+    toggleFavorite: toggleFavorite,
+    listFavorites: listFavorites,
+    newSet: newSet,
+    countsForVolume: countsForVolume,
+    setVolumeKg: setVolumeKg,
+    previousSetsFor: previousSetsFor,
+    sessionSummary: sessionSummary,
+    getBuiltins: getBuiltins,
+    exerciseById: exerciseById,
   };
 })();
-

@@ -4,139 +4,920 @@
     "name": "Weighted Pull-Up",
     "category": "competition",
     "muscles": ["lats", "biceps", "forearms", "rear delts"],
-    "cues": "Pronated grip just outside shoulders; full hang to chin clear of bar; control the descent."
+    "cues": "Pronated grip just outside shoulders; full hang to chin clear of bar; control the descent.",
+    "equipment": "belt",
+    "defaultRestSeconds": 210,
+    "instructions": [
+      "Hang a dip belt with plates and take a pronated grip just outside shoulder width.",
+      "Start from a full dead hang with shoulders active and legs quiet.",
+      "Pull until your chin clears the bar without kipping.",
+      "Lower under control until the elbows are fully straight.",
+      "Reset the hang briefly before the next rep."
+    ]
   },
   {
     "id": "dip",
     "name": "Weighted Dip",
     "category": "competition",
     "muscles": ["chest", "triceps", "front delts"],
-    "cues": "Slight forward lean; elbows track about 45°; shoulders below elbows at the bottom; lock out without shrugging."
+    "cues": "Slight forward lean; elbows track about 45°; shoulders below elbows at the bottom; lock out without shrugging.",
+    "equipment": "belt",
+    "defaultRestSeconds": 210,
+    "instructions": [
+      "Load a dip belt and support yourself on parallel bars with arms locked.",
+      "Lean slightly forward and lower until the shoulders sit below the elbows.",
+      "Keep the elbows tracking about 45 degrees from the torso.",
+      "Drive up to a full lockout without shrugging the shoulders.",
+      "Pause briefly at the top before the next descent."
+    ]
   },
   {
     "id": "muscleup",
     "name": "Weighted Muscle-Up",
     "category": "competition",
     "muscles": ["lats", "chest", "triceps", "biceps", "core"],
-    "cues": "False grip or deep pull; drive hard into the transition; keep the bar or rings close; finish with a full dip lockout."
+    "cues": "False grip or deep pull; drive hard into the transition; keep the bar or rings close; finish with a full dip lockout.",
+    "equipment": "belt",
+    "defaultRestSeconds": 240,
+    "instructions": [
+      "Load a dip belt and set a false grip or deep overhand grip on the bar or rings.",
+      "Pull aggressively until the chest rises above the hands.",
+      "Drive the hips and wrists through the transition while keeping the implement close.",
+      "Finish with a controlled dip lockout at the top.",
+      "Lower with control through the dip and pull phases back to a hang."
+    ]
   },
   {
     "id": "squat",
     "name": "Back Squat",
     "category": "competition",
     "muscles": ["quads", "glutes", "hamstrings", "core"],
-    "cues": "Brace before you move; hips back and down; hip crease below parallel; mid-foot pressure; drive knees out."
+    "cues": "Brace before you move; hips back and down; hip crease below parallel; mid-foot pressure; drive knees out.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 240,
+    "instructions": [
+      "Set the bar on the upper back, unrack, and step out to a stable stance.",
+      "Brace the core hard before you break at the hips and knees.",
+      "Sit the hips back and down until the hip crease is below parallel.",
+      "Keep mid-foot pressure and drive the knees out as you stand.",
+      "Lock the hips and knees at the top without losing the brace."
+    ]
   },
   {
     "id": "chinup",
     "name": "Chin-Up",
     "category": "accessory",
     "muscles": ["lats", "biceps", "forearms"],
-    "cues": "Supinated grip; pull elbows to the ribs; stay quiet in the hips; brief pause at the top."
+    "cues": "Supinated grip; pull elbows to the ribs; stay quiet in the hips; brief pause at the top.",
+    "equipment": "belt",
+    "defaultRestSeconds": 180,
+    "instructions": [
+      "Take a shoulder-width supinated grip and hang fully straight.",
+      "Pull the elbows toward the ribs until the chin clears the bar.",
+      "Keep the hips quiet and avoid swinging.",
+      "Pause briefly at the top, then lower to a full hang."
+    ]
   },
   {
     "id": "neutral-pullup",
     "name": "Neutral-Grip Pull-Up",
     "category": "accessory",
     "muscles": ["lats", "biceps", "brachialis", "forearms"],
-    "cues": "Palms facing each other; full hang to chest toward the handles; wrists stacked under the bar."
+    "cues": "Palms facing each other; full hang to chest toward the handles; wrists stacked under the bar.",
+    "equipment": "belt",
+    "defaultRestSeconds": 180,
+    "instructions": [
+      "Grip parallel handles with palms facing each other and hang fully.",
+      "Pull until the chest rises toward the handles.",
+      "Keep the wrists stacked under the hands throughout the pull.",
+      "Lower under control to a full hang before the next rep."
+    ]
   },
   {
     "id": "australian-row",
     "name": "Inverted Row",
     "category": "accessory",
     "muscles": ["lats", "rhomboids", "rear delts", "biceps"],
-    "cues": "Body rigid from heels to head; pull chest to the bar; squeeze shoulder blades; step feet farther to load more."
+    "cues": "Body rigid from heels to head; pull chest to the bar; squeeze shoulder blades; step feet farther to load more.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Set a bar at about waist height and hang underneath with a straight body line.",
+      "Pull the chest to the bar while keeping heels to head rigid.",
+      "Squeeze the shoulder blades at the top.",
+      "Lower until the arms are straight, then repeat.",
+      "Step the feet farther forward to increase difficulty."
+    ]
   },
   {
     "id": "barbell-row",
     "name": "Barbell Row",
     "category": "accessory",
     "muscles": ["lats", "rhomboids", "rear delts", "biceps", "erectors"],
-    "cues": "Hinge to about 45°; pull the bar to the lower ribs; no bounce; keep the low back neutral."
+    "cues": "Hinge to about 45°; pull the bar to the lower ribs; no bounce; keep the low back neutral.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 150,
+    "instructions": [
+      "Hinge the hips until the torso is about 45 degrees with a neutral low back.",
+      "Pull the bar to the lower ribs without bouncing it off the floor or thighs.",
+      "Squeeze the mid-back at the top of each rep.",
+      "Lower the bar under control and reset the hinge brace."
+    ]
   },
   {
     "id": "face-pull",
     "name": "Face Pull",
     "category": "accessory",
     "muscles": ["rear delts", "rotator cuff", "rhomboids"],
-    "cues": "Pull to face or ears; turn the hands out at the finish; keep the load light enough for clean reps."
+    "cues": "Pull to face or ears; turn the hands out at the finish; keep the load light enough for clean reps.",
+    "equipment": "cable",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Set a cable at upper-chest height with a rope attachment.",
+      "Pull the rope toward the face or ears with elbows high.",
+      "Externally rotate so the hands finish near the ears.",
+      "Return slowly with control and keep the ribs down."
+    ]
   },
   {
     "id": "dead-hang",
     "name": "Dead Hang",
     "category": "accessory",
     "muscles": ["forearms", "grip", "lats", "shoulders"],
-    "cues": "Active hang: slight scap depression; neck long and relaxed; hold for time with quiet legs."
+    "cues": "Active hang: slight scap depression; neck long and relaxed; hold for time with quiet legs.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Grip the bar and hang with the arms fully straight.",
+      "Depress the scapulae slightly to keep an active hang.",
+      "Keep the neck long and the legs quiet.",
+      "Hold for the target time, then step down under control."
+    ]
   },
   {
     "id": "scapular-pullup",
     "name": "Scapular Pull-Up",
     "category": "accessory",
     "muscles": ["lower traps", "lats", "rhomboids"],
-    "cues": "Arms stay straight; depress and retract the scapulae only; pause at the top; no elbow bend."
+    "cues": "Arms stay straight; depress and retract the scapulae only; pause at the top; no elbow bend.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Hang from the bar with locked elbows.",
+      "Depress and retract the scapulae without bending the elbows.",
+      "Pause briefly at the top of the scapular movement.",
+      "Relax back to a full passive hang and repeat."
+    ]
   },
   {
     "id": "ring-dip",
     "name": "Ring Dip",
     "category": "accessory",
     "muscles": ["chest", "triceps", "front delts", "core"],
-    "cues": "Turn rings out at the top; own the instability; full range each rep; stop if a shoulder pinches."
+    "cues": "Turn rings out at the top; own the instability; full range each rep; stop if a shoulder pinches.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 150,
+    "instructions": [
+      "Support yourself on the rings with arms locked and rings turned out.",
+      "Lower until the shoulders are at or below elbow height.",
+      "Keep the rings close to the body and the core braced.",
+      "Press back to a full lockout with rings turned out at the top.",
+      "Stop the set if either shoulder pinches."
+    ]
   },
   {
     "id": "front-squat",
     "name": "Front Squat",
     "category": "accessory",
     "muscles": ["quads", "glutes", "core", "upper back"],
-    "cues": "Elbows high; torso upright; full depth; breathe and brace before each rep."
+    "cues": "Elbows high; torso upright; full depth; breathe and brace before each rep.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 180,
+    "instructions": [
+      "Set the bar across the front delts with elbows high and chest up.",
+      "Brace, then sit straight down while keeping the torso upright.",
+      "Reach full depth with heels planted.",
+      "Drive up through the mid-foot to a full standing lockout."
+    ]
   },
   {
     "id": "romanian-deadlift",
     "name": "Romanian Deadlift",
     "category": "accessory",
     "muscles": ["hamstrings", "glutes", "erectors"],
-    "cues": "Soft knees; hinge until you feel a hamstring stretch; bar close to the legs; spine neutral."
+    "cues": "Soft knees; hinge until you feel a hamstring stretch; bar close to the legs; spine neutral.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 150,
+    "instructions": [
+      "Stand tall with the bar against the thighs and a soft knee bend.",
+      "Hinge at the hips while keeping the bar close to the legs.",
+      "Lower until you feel a strong hamstring stretch with a neutral spine.",
+      "Drive the hips forward to stand tall without hyperextending the low back."
+    ]
   },
   {
     "id": "hanging-leg-raise",
     "name": "Hanging Leg Raise",
     "category": "accessory",
     "muscles": ["abs", "hip flexors", "forearms"],
-    "cues": "Tilt the pelvis under; raise the legs without swing; lower under control."
+    "cues": "Tilt the pelvis under; raise the legs without swing; lower under control.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Hang from the bar with an active shoulder position.",
+      "Tilt the pelvis under and raise the legs without swinging.",
+      "Lift until the legs reach at least parallel, higher if controlled.",
+      "Lower under control and reset before the next rep."
+    ]
   },
   {
     "id": "band-curl",
     "name": "Band Curl",
     "category": "accessory",
     "muscles": ["biceps", "forearms"],
-    "cues": "Elbows pinned at the sides; full stretch to full squeeze; smooth tempo, no heave."
+    "cues": "Elbows pinned at the sides; full stretch to full squeeze; smooth tempo, no heave.",
+    "equipment": "band",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Stand on the band and hold the handles with elbows pinned at the sides.",
+      "Curl through a full range from stretch to peak squeeze.",
+      "Lower slowly without letting the elbows drift forward.",
+      "Keep a smooth tempo and avoid heaving the torso."
+    ]
   },
   {
     "id": "band-tricep-extension",
     "name": "Band Triceps Extension",
     "category": "accessory",
     "muscles": ["triceps"],
-    "cues": "Pin the elbows; extend fully each rep; use a band light enough for clean lockouts."
+    "cues": "Pin the elbows; extend fully each rep; use a band light enough for clean lockouts.",
+    "equipment": "band",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Anchor the band overhead or high and grip the ends with elbows bent.",
+      "Pin the elbows in place and extend the elbows fully.",
+      "Squeeze the triceps at lockout without shrugging.",
+      "Return to the start with control and repeat."
+    ]
   },
   {
     "id": "pike-pushup",
     "name": "Pike Push-Up",
     "category": "accessory",
     "muscles": ["front delts", "triceps", "upper chest"],
-    "cues": "Hips high; head travels toward the floor between the hands; own full depth before adding load."
+    "cues": "Hips high; head travels toward the floor between the hands; own full depth before adding load.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Set up in a pike with hips high and hands shoulder-width.",
+      "Bend the elbows so the head travels toward the floor between the hands.",
+      "Lower as deep as shoulder comfort allows.",
+      "Press back to a locked-out pike position."
+    ]
   },
   {
     "id": "overhead-press",
     "name": "Overhead Press",
     "category": "accessory",
     "muscles": ["front delts", "triceps", "upper chest", "core"],
-    "cues": "Brace glutes and core; bar path close to the face; lock out overhead without leaning back."
+    "cues": "Brace glutes and core; bar path close to the face; lock out overhead without leaning back.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 150,
+    "instructions": [
+      "Set the bar at the front rack with a grip just outside the shoulders.",
+      "Brace the glutes and core, then press the bar close past the face.",
+      "Lock out overhead with the biceps near the ears and ribs down.",
+      "Lower to the shoulders under control and reset the brace."
+    ]
   },
   {
     "id": "pushup",
     "name": "Push-Up",
     "category": "accessory",
     "muscles": ["chest", "triceps", "front delts", "core"],
-    "cues": "Body in one line; chest to the floor; elbows about 45°; full lockout without sagging hips."
+    "cues": "Body in one line; chest to the floor; elbows about 45°; full lockout without sagging hips.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Set the hands under the shoulders and brace the body in one rigid line.",
+      "Lower until the chest nearly touches the floor with elbows about 45 degrees.",
+      "Press to a full lockout without letting the hips sag.",
+      "Reset the brace and repeat."
+    ]
+  },
+  {
+    "id": "wide-grip-pullup",
+    "name": "Wide-Grip Pull-Up",
+    "category": "accessory",
+    "muscles": ["lats", "rear delts", "biceps", "forearms"],
+    "cues": "Grip outside shoulders; initiate with the lats; chin over bar; full hang each rep.",
+    "equipment": "belt",
+    "defaultRestSeconds": 180,
+    "instructions": [
+      "Take a pronated grip clearly outside shoulder width.",
+      "Start from a full hang and initiate the pull with the lats.",
+      "Pull until the chin clears the bar without kipping.",
+      "Lower slowly to a full hang before the next rep."
+    ]
+  },
+  {
+    "id": "pullup-negative",
+    "name": "Pull-Up Negative",
+    "category": "accessory",
+    "muscles": ["lats", "biceps", "forearms", "rear delts"],
+    "cues": "Jump or step to the top; lower for 3–5 seconds; full hang finish; no bounce.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Jump or step to a chin-over-bar position.",
+      "Lower for three to five seconds through the full range.",
+      "Finish in a controlled dead hang.",
+      "Reset and repeat without bouncing out of the bottom."
+    ]
+  },
+  {
+    "id": "lat-pulldown",
+    "name": "Lat Pulldown",
+    "category": "accessory",
+    "muscles": ["lats", "biceps", "rear delts"],
+    "cues": "Pull the bar to the upper chest; lean back slightly; control the return; no torso heave.",
+    "equipment": "machine",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Sit tall and grip the bar slightly wider than the shoulders.",
+      "Pull the bar to the upper chest with a slight lean.",
+      "Squeeze the lats at the bottom without shrugging.",
+      "Return the bar under control until the arms are straight."
+    ]
+  },
+  {
+    "id": "assisted-pullup",
+    "name": "Assisted Pull-Up",
+    "category": "accessory",
+    "muscles": ["lats", "biceps", "forearms"],
+    "cues": "Full hang to chin clear; match the machine assistance to clean reps; no half reps.",
+    "equipment": "machine",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Set the assistance so you can complete clean full-range reps.",
+      "Start from a full hang with a pronated or neutral grip.",
+      "Pull until the chin clears the handles.",
+      "Lower under control to full elbow extension each rep."
+    ]
+  },
+  {
+    "id": "seated-cable-row",
+    "name": "Seated Cable Row",
+    "category": "accessory",
+    "muscles": ["lats", "rhomboids", "rear delts", "biceps"],
+    "cues": "Tall torso; pull to the lower ribs; squeeze scapulae; avoid yanking with the low back.",
+    "equipment": "cable",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Sit tall with the feet braced and arms stretched forward.",
+      "Pull the handle to the lower ribs while keeping the torso stable.",
+      "Squeeze the shoulder blades together at the finish.",
+      "Extend the arms under control without rounding the upper back."
+    ]
+  },
+  {
+    "id": "dumbbell-row",
+    "name": "Dumbbell Row",
+    "category": "accessory",
+    "muscles": ["lats", "rhomboids", "rear delts", "biceps"],
+    "cues": "Hinge or bench support; pull elbow past the hip; no torso twist; full stretch at the bottom.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Support one hand and knee on a bench with the other foot on the floor.",
+      "Pull the dumbbell toward the hip with the elbow close to the body.",
+      "Pause briefly at the top without twisting the torso.",
+      "Lower to a full stretch and finish all reps before switching sides."
+    ]
+  },
+  {
+    "id": "chest-supported-row",
+    "name": "Chest-Supported Row",
+    "category": "accessory",
+    "muscles": ["lats", "rhomboids", "rear delts", "biceps"],
+    "cues": "Chest glued to the pad; pull elbows back; squeeze hard; no momentum.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Lie chest-down on an incline bench with dumbbells hanging straight down.",
+      "Pull the elbows back until the shoulder blades squeeze together.",
+      "Keep the chest glued to the pad throughout.",
+      "Lower the weights under control to a full stretch."
+    ]
+  },
+  {
+    "id": "band-pull-apart",
+    "name": "Band Pull-Apart",
+    "category": "accessory",
+    "muscles": ["rear delts", "rhomboids", "rotator cuff"],
+    "cues": "Arms long; pull the band to the chest line; squeeze scapulae; smooth tempo.",
+    "equipment": "band",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Hold a light band at shoulder height with straight arms.",
+      "Pull the hands apart until the band reaches the chest line.",
+      "Squeeze the rear delts and scapulae at the finish.",
+      "Return slowly without letting the shoulders shrug up."
+    ]
+  },
+  {
+    "id": "diamond-pushup",
+    "name": "Diamond Push-Up",
+    "category": "accessory",
+    "muscles": ["triceps", "chest", "front delts", "core"],
+    "cues": "Hands under the sternum; elbows tight; chest to hands; rigid plank line.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Place the hands under the sternum with thumbs and index fingers close.",
+      "Keep a rigid plank and lower the chest toward the hands.",
+      "Keep the elbows close to the torso on the way down.",
+      "Press to full lockout without letting the hips sag."
+    ]
+  },
+  {
+    "id": "ring-pushup",
+    "name": "Ring Push-Up",
+    "category": "accessory",
+    "muscles": ["chest", "triceps", "front delts", "core"],
+    "cues": "Rings tight to the body; turn out at the top; full depth; own the instability.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Set the rings just above the floor and brace in a plank on the rings.",
+      "Lower with the rings close to the body until the chest passes the hands.",
+      "Press up and turn the rings out at the lockout.",
+      "Keep the core tight to control the instability each rep."
+    ]
+  },
+  {
+    "id": "bench-dip",
+    "name": "Bench Dip",
+    "category": "accessory",
+    "muscles": ["triceps", "chest", "front delts"],
+    "cues": "Hands on the edge; lower until elbows near 90°; stay close to the bench; no shoulder dump.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Place the hands on a bench edge behind you with feet on the floor or another bench.",
+      "Lower until the elbows are near 90 degrees while staying close to the bench.",
+      "Keep the shoulders from dumping forward at the bottom.",
+      "Press back to a full arm lockout."
+    ]
+  },
+  {
+    "id": "close-grip-bench",
+    "name": "Close-Grip Bench Press",
+    "category": "accessory",
+    "muscles": ["triceps", "chest", "front delts"],
+    "cues": "Hands just inside shoulders; elbows tuck; bar to lower chest; lock out hard.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 150,
+    "instructions": [
+      "Lie on the bench and set a grip just inside shoulder width.",
+      "Unrack and lower the bar to the lower chest with elbows tucked.",
+      "Press to a hard lockout without flaring the elbows wide.",
+      "Keep the wrists stacked and the shoulder blades pinched throughout."
+    ]
+  },
+  {
+    "id": "dumbbell-bench",
+    "name": "Dumbbell Bench Press",
+    "category": "accessory",
+    "muscles": ["chest", "triceps", "front delts"],
+    "cues": "Wrists stacked; lower to a stretch; press up and in; no bounced reps.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Lie on a flat bench with dumbbells above the chest and wrists stacked.",
+      "Lower the bells until you feel a chest stretch at the bottom.",
+      "Press up and slightly inward to lockout.",
+      "Control every rep without bouncing off the chest."
+    ]
+  },
+  {
+    "id": "incline-dumbbell-press",
+    "name": "Incline Dumbbell Press",
+    "category": "accessory",
+    "muscles": ["upper chest", "front delts", "triceps"],
+    "cues": "Bench 30–45°; lower to the upper chest line; press smoothly; keep ribs down.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Set an incline between 30 and 45 degrees and lie back with dumbbells.",
+      "Lower the bells to the upper-chest line with control.",
+      "Press to lockout without flaring the ribs.",
+      "Keep a steady tempo and full range each rep."
+    ]
+  },
+  {
+    "id": "dumbbell-ohp",
+    "name": "Dumbbell Overhead Press",
+    "category": "accessory",
+    "muscles": ["front delts", "triceps", "upper chest", "core"],
+    "cues": "Brace hard; press in a slight arc; lock out overhead; no excessive lean.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Stand with dumbbells at shoulder height and brace the core.",
+      "Press the bells overhead in a slight arc to lockout.",
+      "Keep the ribs down and avoid leaning back.",
+      "Lower to the shoulders under control before the next rep."
+    ]
+  },
+  {
+    "id": "lateral-raise",
+    "name": "Lateral Raise",
+    "category": "accessory",
+    "muscles": ["side delts"],
+    "cues": "Soft elbows; raise to just below shoulder height; lead with the elbows; no swing.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Stand tall with light dumbbells at the sides and a soft elbow bend.",
+      "Raise the arms out to the sides until just below shoulder height.",
+      "Lead with the elbows and keep the wrists neutral.",
+      "Lower slowly without swinging the torso."
+    ]
+  },
+  {
+    "id": "reverse-fly",
+    "name": "Reverse Fly",
+    "category": "accessory",
+    "muscles": ["rear delts", "rhomboids", "rotator cuff"],
+    "cues": "Hinge or chest support; soft elbows; open the arms wide; squeeze rear delts.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Hinge at the hips or lie chest-supported with light dumbbells hanging down.",
+      "Open the arms wide with soft elbows until you feel the rear delts work.",
+      "Squeeze briefly at the top without shrugging.",
+      "Lower under control and repeat."
+    ]
+  },
+  {
+    "id": "rear-delt-fly-machine",
+    "name": "Rear Delt Fly Machine",
+    "category": "accessory",
+    "muscles": ["rear delts", "rhomboids"],
+    "cues": "Chest on the pad; arms long; open against the pads; pause and return slow.",
+    "equipment": "machine",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Sit with the chest against the pad and grip the handles or pads.",
+      "Open the arms back until the rear delts are fully contracted.",
+      "Pause briefly without using momentum.",
+      "Return slowly to the start position."
+    ]
+  },
+  {
+    "id": "barbell-curl",
+    "name": "Barbell Curl",
+    "category": "accessory",
+    "muscles": ["biceps", "forearms"],
+    "cues": "Elbows fixed; full stretch to full squeeze; no hip drive; control the eccentric.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Stand with a shoulder-width underhand grip and elbows at the sides.",
+      "Curl the bar to a full squeeze without swinging the hips.",
+      "Lower through a full stretch under control.",
+      "Keep the elbows fixed throughout the set."
+    ]
+  },
+  {
+    "id": "hammer-curl",
+    "name": "Hammer Curl",
+    "category": "accessory",
+    "muscles": ["biceps", "brachialis", "forearms"],
+    "cues": "Neutral grip; elbows pinned; full range; no torso lean.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Hold dumbbells with a neutral grip and elbows pinned at the sides.",
+      "Curl the bells up without rotating the wrists.",
+      "Squeeze at the top, then lower to a full stretch.",
+      "Keep the torso still and avoid leaning back."
+    ]
+  },
+  {
+    "id": "cable-tricep-pushdown",
+    "name": "Cable Triceps Pushdown",
+    "category": "accessory",
+    "muscles": ["triceps"],
+    "cues": "Elbows glued to the sides; full lockout; control the return; ribs down.",
+    "equipment": "cable",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Stand at a high cable with a straight bar or rope and elbows pinned in.",
+      "Extend the elbows to a full lockout while keeping the ribs down.",
+      "Squeeze the triceps at the bottom.",
+      "Return until the forearms are just above parallel and repeat."
+    ]
+  },
+  {
+    "id": "skull-crusher",
+    "name": "Skull Crusher",
+    "category": "accessory",
+    "muscles": ["triceps"],
+    "cues": "Upper arms still; lower to the forehead or behind; extend fully; elbows track.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Lie on a bench and hold a barbell or EZ bar above the shoulders.",
+      "Keep the upper arms still and bend the elbows to lower the bar toward the forehead.",
+      "Extend the elbows fully without flaring them wide.",
+      "Control every eccentric and reset the lockout between reps if needed."
+    ]
+  },
+  {
+    "id": "overhead-tricep-extension",
+    "name": "Overhead Triceps Extension",
+    "category": "accessory",
+    "muscles": ["triceps"],
+    "cues": "Elbows high; stretch the long head; extend fully; avoid flaring.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Hold a dumbbell overhead with both hands and elbows pointing up.",
+      "Lower the weight behind the head until you feel a long-head stretch.",
+      "Extend the elbows fully without flaring them out.",
+      "Keep the ribs down and the upper arms mostly still."
+    ]
+  },
+  {
+    "id": "bulgarian-split-squat",
+    "name": "Bulgarian Split Squat",
+    "category": "accessory",
+    "muscles": ["quads", "glutes", "hamstrings", "core"],
+    "cues": "Rear foot elevated; front shin vertical-ish; descend straight down; own the balance.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Stand in a split stance with the rear foot elevated on a bench.",
+      "Hold dumbbells at the sides and keep the torso mostly upright.",
+      "Lower until the front thigh is near parallel with the front shin mostly vertical.",
+      "Drive through the front foot to stand and finish all reps before switching sides."
+    ]
+  },
+  {
+    "id": "hip-thrust",
+    "name": "Hip Thrust",
+    "category": "accessory",
+    "muscles": ["glutes", "hamstrings", "core"],
+    "cues": "Upper back on the bench; chin tucked; drive through the heels; pause at full hip extension.",
+    "equipment": "barbell",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Set the upper back on a bench with the bar over the hips and feet flat.",
+      "Brace, tuck the chin, and drive through the heels to full hip extension.",
+      "Pause and squeeze the glutes at the top without overarching the low back.",
+      "Lower the hips under control and repeat."
+    ]
+  },
+  {
+    "id": "walking-lunge",
+    "name": "Walking Lunge",
+    "category": "accessory",
+    "muscles": ["quads", "glutes", "hamstrings", "core"],
+    "cues": "Long controlled steps; front knee tracks over mid-foot; torso tall; no slam into the floor.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Hold dumbbells at the sides and step forward into a long lunge.",
+      "Lower until the rear knee nearly touches the floor with a tall torso.",
+      "Drive through the front foot and step into the next lunge.",
+      "Keep the front knee tracking over the mid-foot each step."
+    ]
+  },
+  {
+    "id": "goblet-squat",
+    "name": "Goblet Squat",
+    "category": "accessory",
+    "muscles": ["quads", "glutes", "core"],
+    "cues": "Bell at the chest; elbows inside the knees; sit deep; stay upright.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Hold a dumbbell or kettlebell at the chest with elbows pointed down.",
+      "Sit the hips down and back while keeping the torso upright.",
+      "Descend as deep as mobility allows with heels flat.",
+      "Drive up to a full stand without letting the knees cave in."
+    ]
+  },
+  {
+    "id": "leg-press",
+    "name": "Leg Press",
+    "category": "accessory",
+    "muscles": ["quads", "glutes", "hamstrings"],
+    "cues": "Feet mid-platform; full range without peeling the low back; controlled press; no lockout slam.",
+    "equipment": "machine",
+    "defaultRestSeconds": 120,
+    "instructions": [
+      "Sit in the sled with feet mid-platform about shoulder-width apart.",
+      "Lower the sled until the knees bend deeply without the low back peeling off the pad.",
+      "Press through the mid-foot to near lockout without slamming.",
+      "Keep the knees tracking over the toes throughout."
+    ]
+  },
+  {
+    "id": "leg-curl",
+    "name": "Leg Curl",
+    "category": "accessory",
+    "muscles": ["hamstrings"],
+    "cues": "Hips glued down; curl to a full squeeze; control the eccentric; no hip hike.",
+    "equipment": "machine",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Set the pad on the lower calves and lock the hips into the machine.",
+      "Curl the heels toward the glutes to a full squeeze.",
+      "Lower under control without letting the hips hike.",
+      "Repeat with a smooth tempo."
+    ]
+  },
+  {
+    "id": "leg-extension",
+    "name": "Leg Extension",
+    "category": "accessory",
+    "muscles": ["quads"],
+    "cues": "Pad on the shins; extend fully; pause; lower slow; no jerking.",
+    "equipment": "machine",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Sit with the pad on the lower shins and the back supported.",
+      "Extend the knees fully and pause briefly at the top.",
+      "Lower the weight slowly to the start position.",
+      "Avoid jerking or bouncing out of the bottom."
+    ]
+  },
+  {
+    "id": "calf-raise",
+    "name": "Calf Raise",
+    "category": "accessory",
+    "muscles": ["calves"],
+    "cues": "Full stretch at the bottom; rise onto the toes; pause; slow lower.",
+    "equipment": "machine",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Set the shoulders or hands under the pads with the balls of the feet on the step.",
+      "Drop the heels into a full stretch at the bottom.",
+      "Rise onto the toes and pause at the top.",
+      "Lower slowly through the full range."
+    ]
+  },
+  {
+    "id": "ab-wheel",
+    "name": "Ab Wheel Rollout",
+    "category": "accessory",
+    "muscles": ["abs", "core", "lats"],
+    "cues": "Brace hard; roll out only as far as you can keep a hollow; pull back without folding the hips.",
+    "equipment": "other",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Kneel with the ab wheel under the shoulders and brace into a hollow shape.",
+      "Roll forward only as far as you can keep the ribs down and hips from folding.",
+      "Pull the wheel back to the start using the abs and lats.",
+      "Reset the brace before each rollout."
+    ]
+  },
+  {
+    "id": "hollow-hold",
+    "name": "Hollow Hold",
+    "category": "accessory",
+    "muscles": ["abs", "core", "hip flexors"],
+    "cues": "Lower back glued down; ribs tucked; arms and legs long; hold for time.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Lie on your back and press the lower back into the floor.",
+      "Lift the shoulders and legs into a long hollow shape.",
+      "Keep the ribs tucked and arms reaching overhead or by the sides.",
+      "Hold for the target time without letting the low back arch."
+    ]
+  },
+  {
+    "id": "plank",
+    "name": "Plank",
+    "category": "accessory",
+    "muscles": ["core", "abs", "front delts"],
+    "cues": "Elbows under shoulders; ribs down; glutes on; one straight line; breathe.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Set the elbows under the shoulders and brace into one straight line.",
+      "Tuck the ribs, squeeze the glutes, and keep the hips level.",
+      "Breathe steadily without sagging or piking.",
+      "Hold for the target time, then lower under control."
+    ]
+  },
+  {
+    "id": "cable-crunch",
+    "name": "Cable Crunch",
+    "category": "accessory",
+    "muscles": ["abs"],
+    "cues": "Kneel under a high cable; crunch the ribs to the pelvis; pause; control the return.",
+    "equipment": "cable",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Kneel under a high cable with a rope held behind the head or at the shoulders.",
+      "Crunch the ribs toward the pelvis while keeping the hips mostly still.",
+      "Pause at the peak contraction.",
+      "Return under control without yanking with the arms."
+    ]
+  },
+  {
+    "id": "hanging-knee-raise",
+    "name": "Hanging Knee Raise",
+    "category": "accessory",
+    "muscles": ["abs", "hip flexors", "forearms"],
+    "cues": "Posterior tilt; knees to chest without swing; lower slow; quiet shoulders.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Hang from the bar with an active shoulder position.",
+      "Tilt the pelvis under and raise the knees toward the chest.",
+      "Avoid swinging and keep the shoulders quiet.",
+      "Lower the legs slowly and reset before the next rep."
+    ]
+  },
+  {
+    "id": "farmer-carry",
+    "name": "Farmer Carry",
+    "category": "accessory",
+    "muscles": ["grip", "forearms", "traps", "core"],
+    "cues": "Tall posture; ribs down; short quick steps; crush the handles; walk the full distance.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Deadlift heavy dumbbells or implements to a standing lockout.",
+      "Brace tall with the ribs down and crush the handles.",
+      "Walk with short controlled steps for the target distance or time.",
+      "Set the weights down under control at the end of the carry."
+    ]
+  },
+  {
+    "id": "wrist-curl",
+    "name": "Wrist Curl",
+    "category": "accessory",
+    "muscles": ["forearms", "grip"],
+    "cues": "Forearms supported; full stretch to full flexion; light load; slow tempo.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 60,
+    "instructions": [
+      "Sit and rest the forearms on the thighs with the wrists hanging over the knees.",
+      "Curl the dumbbells through a full wrist flexion.",
+      "Lower into a full stretch at the bottom.",
+      "Use a light load and a slow tempo for clean reps."
+    ]
+  },
+  {
+    "id": "towel-pullup",
+    "name": "Towel Pull-Up",
+    "category": "accessory",
+    "muscles": ["lats", "biceps", "forearms", "grip"],
+    "cues": "Drape towels over the bar; crush the grip; full hang to chin clear; control the lower.",
+    "equipment": "bodyweight",
+    "defaultRestSeconds": 150,
+    "instructions": [
+      "Drape one or two towels over the bar and crush them in each hand.",
+      "Hang fully, then pull until the chin clears the bar.",
+      "Keep the grip locked and the body from swinging.",
+      "Lower under control to a full hang."
+    ]
+  },
+  {
+    "id": "chest-fly",
+    "name": "Cable Chest Fly",
+    "category": "accessory",
+    "muscles": ["chest", "front delts"],
+    "cues": "Soft elbows; hug the arc; stretch at the open; squeeze at the close; no shoulder shrug.",
+    "equipment": "cable",
+    "defaultRestSeconds": 75,
+    "instructions": [
+      "Set dual cables at about chest height and step forward into a slight split stance.",
+      "With soft elbows, open the arms into a wide chest stretch.",
+      "Hug the handles together in a wide arc until they meet in front of the chest.",
+      "Keep the shoulders down and control both the open and close."
+    ]
+  },
+  {
+    "id": "step-up",
+    "name": "Step-Up",
+    "category": "accessory",
+    "muscles": ["quads", "glutes", "hamstrings"],
+    "cues": "Drive through the lead foot; stand tall on the box; control the descent; no push-off cheat.",
+    "equipment": "dumbbell",
+    "defaultRestSeconds": 90,
+    "instructions": [
+      "Hold dumbbells and place one foot fully on a box or bench.",
+      "Drive through the lead foot to stand tall on the box.",
+      "Keep the torso upright and avoid shoving off hard with the trail leg.",
+      "Lower under control and finish the set before switching sides."
+    ]
   }
 ]
