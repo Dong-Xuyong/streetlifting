@@ -56,13 +56,9 @@
     updateChrome(view, currentTab);
     setActiveTabButton(currentTab);
 
-    if (currentTab !== "log") {
-      const fab = document.getElementById("log-complete-fab");
-      if (fab) fab.remove();
-    }
-
     if (!view || typeof view.render !== "function") {
       el.innerHTML = `<div class="empty"><p>View "${currentTab}" is not available yet.</p></div>`;
+      syncActiveBar();
       return;
     }
 
@@ -73,6 +69,17 @@
     } catch (err) {
       console.error("SL render error", currentTab, err);
       el.innerHTML = `<div class="empty"><p>Failed to render ${currentTab}.</p></div>`;
+    }
+
+    // A running workout stays alive across tabs; the bar is its off-screen presence.
+    syncActiveBar();
+  }
+
+  function syncActiveBar() {
+    try {
+      if (SL.log && typeof SL.log.syncActiveBar === "function") SL.log.syncActiveBar();
+    } catch (err) {
+      console.warn("syncActiveBar", err);
     }
   }
 

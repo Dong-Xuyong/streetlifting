@@ -7,6 +7,8 @@
 
   var KG_TO_LB = 2.2046226218;
 
+  var DRAFT_KEY = "streetlifting-draft";
+
   /** @type {object|null} */
   var draft = null;
   /** @type {string|null} */
@@ -19,8 +21,174 @@
   /** @type {number|null} after complete-set, scroll toward next open set */
   var pendingScrollSetIdx = null;
   var doneHideTimer = null;
-  /** @type {number|null} interval for live workout duration */
+  /** @type {number|null} interval for live workout duration on the log screen */
   var workoutClockTimer = null;
+  /** @type {number|null} interval for the persistent bottom active-workout bar */
+  var activeBarTimer = null;
+  /** @type {number|null} debounce handle for draft persistence */
+  var draftPersistTimer = null;
+  /** Session details editor expanded (default collapsed) */
+  var sessionDetailsOpen = false;
+  /** @type {Object.<string, boolean>} set id -> extras row open */
+  var openSetExtras = {};
+  /** @type {Object.<string, boolean>} section key -> exercise menu open */
+  var openExMenus = {};
+  /** @type {Object.<string, boolean>} exerciseId -> section note forced open */
+  var openSectionNotes = {};
+
+  function clearPersistedDraft() {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch (err) {
+      /* storage may be unavailable */
+    }
+  }
+
+  function persistDraftNow() {
+    try {
+      if (
+        !draft ||
+        (draft.startedAt == null &&
+          !(draft.sets && draft.sets.length) &&
+          !(draft.note && String(draft.note).trim()))
+      ) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch (err) {
+      /* never break logging on storage failure */
+    }
+  }
+
+  function schedulePersistDraft() {
+    if (draftPersistTimer != null) {
+      clearTimeout(draftPersistTimer);
+    }
+    draftPersistTimer = setTimeout(function () {
+      draftPersistTimer = null;
+      persistDraftNow();
+    }, 200);
+  }
+
+  function restoreDraftFromStorage() {
+    try {
+      var raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      ensureNotes(parsed);
+      if (!Array.isArray(parsed.sets)) parsed.sets = [];
+      return parsed;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  (function initDraftFromStorage() {
+    var restored = restoreDraftFromStorage();
+    if (restored) draft = restored;
+  })();
+
+  function sectionMenuKey(secIdx, exerciseId) {
+    return String(secIdx) + ":" + String(exerciseId || "");
+  }
+
+  function workoutDisplayName() {
+    if (draft && draft.dayName) return String(draft.dayName);
+    return "Workout";
+  }
+
+  function hasActiveSession() {
+    return !!(draft && draft.startedAt != null && !isNaN(Number(draft.startedAt)));
+  }
+
+  function activeSessionInfo() {
+    if (!hasActiveSession()) return null;
+    var sets = draft.sets || [];
+    return {
+      name: workoutDisplayName(),
+      startedAt: Number(draft.startedAt),
+      elapsedMs: workoutElapsedMs(),
+      setCount: sets.length,
+    };
+  }
+
+  function stopActiveBarTick() {
+    if (activeBarTimer != null) {
+      clearInterval(activeBarTimer);
+      activeBarTimer = null;
+    }
+  }
+
+  function removeActiveBar() {
+    stopActiveBarTick();
+    var bar = document.getElementById("active-workout-bar");
+    if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+  }
+
+  function resumeActiveSession() {
+    if (typeof SL.navigate === "function") {
+      SL.navigate("log");
+    }
+  }
+
+  function syncActiveBar() {
+    var onLog = !!(SL.app && SL.app.currentTab === "log");
+    if (onLog || !hasActiveSession()) {
+      removeActiveBar();
+      return;
+    }
+    var app = document.getElementById("app");
+    if (!app) return;
+    var info = activeSessionInfo();
+    if (!info) {
+      removeActiveBar();
+      return;
+    }
+    var bar = document.getElementById("active-workout-bar");
+    if (!bar) {
+      bar = document.createElement("button");
+      bar.type = "button";
+      bar.id = "active-workout-bar";
+      bar.className = "active-workout-bar";
+      bar.setAttribute(
+        "aria-label",
+        "Running workout. Tap to return to logging."
+      );
+      bar.innerHTML =
+        '<span class="active-workout-bar-name"></span>' +
+        '<span class="active-workout-bar-time"></span>';
+      bar.addEventListener("click", function (e) {
+        e.preventDefault();
+        resumeActiveSession();
+      });
+      app.appendChild(bar);
+    }
+    var nameEl = bar.querySelector(".active-workout-bar-name");
+    var timeEl = bar.querySelector(".active-workout-bar-time");
+    if (nameEl) nameEl.textContent = info.name;
+    function tickBar() {
+      if (!hasActiveSession()) {
+        removeActiveBar();
+        return;
+      }
+      var elapsed = formatElapsed(workoutElapsedMs());
+      if (timeEl) timeEl.textContent = elapsed;
+      bar.setAttribute(
+        "aria-label",
+        "Running workout " +
+          workoutDisplayName() +
+          ", " +
+          elapsed +
+          ". Tap to return to logging."
+      );
+    }
+    tickBar();
+    if (activeBarTimer == null) {
+      activeBarTimer = setInterval(tickBar, 1000);
+    }
+  }
 
   function ensureNotes(obj) {
     if (!obj || typeof obj !== "object") return obj;
@@ -382,6 +550,7 @@
     }
     draft.endedAt = null;
     draft.durationSec = null;
+    schedulePersistDraft();
   }
 
   function stopWorkoutClockTick() {
@@ -416,9 +585,10 @@
     ensureWorkoutStarted();
     syncWorkoutClockUI();
     workoutClockTimer = setInterval(function () {
+      /* Stop only the on-screen log clock when leaving the tab.
+         Never clear draft or end the session on navigation. */
       if (SL.app && SL.app.currentTab && SL.app.currentTab !== "log") {
         stopWorkoutClockTick();
-        removeCompleteFab();
         return;
       }
       syncWorkoutClockUI();
@@ -426,30 +596,9 @@
   }
 
   function removeCompleteFab() {
+    /* Legacy cleanup: floating FAB was removed; strip any leftover node. */
     var fab = document.getElementById("log-complete-fab");
     if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
-  }
-
-  function ensureCompleteFab() {
-    var app = document.getElementById("app");
-    if (!app) return;
-    var fab = document.getElementById("log-complete-fab");
-    if (!fab) {
-      fab = document.createElement("button");
-      fab.type = "button";
-      fab.id = "log-complete-fab";
-      fab.className = "btn btn-primary log-complete-fab";
-      fab.setAttribute("data-action", "complete-session");
-      fab.setAttribute("aria-label", "Complete workout");
-      fab.textContent = "Complete workout";
-      fab.addEventListener("click", function (e) {
-        e.preventDefault();
-        if (!draft) return;
-        saveSession(true);
-      });
-      app.appendChild(fab);
-    }
-    fab.hidden = false;
   }
 
   function endWorkoutClock(resetDraftStartedAt) {
@@ -808,8 +957,8 @@
     overlayEl = document.createElement("div");
     overlayEl.id = "timer-overlay";
     overlayEl.className = "timer-overlay hidden";
-    overlayEl.setAttribute("role", "dialog");
-    overlayEl.setAttribute("aria-modal", "true");
+    // Docked strip, not a modal: resting must never block the rest of the app.
+    overlayEl.setAttribute("role", "region");
     overlayEl.setAttribute("aria-label", "Rest timer");
     overlayEl.innerHTML =
       '<div class="rest-bar" data-rest-bar>' +
@@ -820,7 +969,9 @@
       '<button type="button" class="btn secondary rest-bar-adjust" data-timer-adj="15" aria-label="Plus 15 seconds">+15s</button>' +
       '<button type="button" class="btn btn-primary rest-bar-skip" data-timer-skip>Skip rest</button>' +
       "</div></div>";
-    document.body.appendChild(overlayEl);
+    var appEl = document.getElementById("app");
+    if (appEl) appEl.appendChild(overlayEl);
+    else document.body.appendChild(overlayEl);
     overlayEl.addEventListener("click", function (e) {
       var t = e.target;
       if (!t || !t.closest) return;
@@ -975,7 +1126,8 @@
 
     var noteVal = typeof set.note === "string" ? set.note : "";
     var hasNote = !!(noteVal && String(noteVal).trim());
-    var noteOpen = hasNote;
+    var hasRpe = set.rpe != null && set.rpe !== "";
+    var extrasOpen = !!(openSetExtras[set.id] || false);
     var badge = set.completed ? prBadgeHtml(set, draft) : "";
     var rowCls =
       "set-row" + (isWarmup ? " set-row--warmup" : "") + (set.completed ? " set-row--done" : "");
@@ -1007,8 +1159,17 @@
       (set.completed
         ? '<span class="badge green set-done-badge">Done</span>'
         : '<button type="button" class="btn btn-primary sm" data-action="complete-set" aria-label="Complete set">OK</button>') +
+      (badge ? '<span class="set-pr-badges">' + badge + "</span>" : "") +
+      '<button type="button" class="set-row-more' +
+      (hasNote || hasRpe ? " set-row-more--on" : "") +
+      (extrasOpen ? " set-row-more--open" : "") +
+      '" data-action="toggle-set-extra" aria-expanded="' +
+      (extrasOpen ? "true" : "false") +
+      '" aria-label="More set options">\u2026</button>' +
       "</div>" +
-      '<div class="set-row-meta" data-set-idx="' +
+      '<div class="set-row-meta' +
+      (extrasOpen ? "" : " hidden") +
+      '" data-set-idx="' +
       idx +
       '">' +
       '<label class="field set-rpe-field"><span class="lbl">RPE</span>' +
@@ -1019,17 +1180,16 @@
       '<button type="button" class="set-note-btn' +
       (hasNote ? " set-note-btn--on" : "") +
       '" data-action="toggle-set-note" aria-expanded="' +
-      (noteOpen ? "true" : "false") +
+      (hasNote ? "true" : "false") +
       '" aria-label="' +
       (hasNote ? "Edit set note" : "Add set note") +
       '">Note</button>' +
       '<input type="text" class="set-note-input' +
-      (noteOpen ? "" : " hidden") +
+      (hasNote ? "" : " hidden") +
       '" data-field="set-note" maxlength="200" placeholder="Set note" value="' +
       esc(noteVal) +
       '" aria-label="Set note" />' +
       "</div>" +
-      (badge ? '<div class="set-pr-badges">' + badge + "</div>" : "") +
       '<button type="button" class="icon-btn del-set" data-action="remove-set" aria-label="Remove set">&times;</button>' +
       "</div>";
 
@@ -1055,7 +1215,9 @@
     ensureNotes(draft);
     var sectionVal = exId && draft.sectionNotes[exId] ? draft.sectionNotes[exId] : "";
     var hasSectionNote = !!(sectionVal && String(sectionVal).trim());
-    var noteOpen = hasSectionNote;
+    var menuKey = sectionMenuKey(secIdx, exId);
+    var menuOpen = !!openExMenus[menuKey];
+    var noteOpen = !!(hasSectionNote || openSectionNotes[exId]);
     var ssId = section.supersetId;
     var prevSec = secIdx > 0 ? sections[secIdx - 1] : null;
     var canJoin = !!(prevSec && (!ssId || !prevSec.supersetId || prevSec.supersetId !== ssId));
@@ -1073,23 +1235,39 @@
       rows += renderSetRow(set, idx, section.localNums[r], unit, displayNum || 1);
     }
 
-    var actions =
-      '<div class="row wrap ex-section-actions">' +
-      '<button type="button" class="btn sm" data-action="add-set-to-exercise" data-section-idx="' +
+    var menuHtml =
+      '<div class="log-ex-menu' +
+      (menuOpen ? "" : " hidden") +
+      '" data-ex-menu="' +
+      esc(menuKey) +
+      '">' +
+      '<label class="field log-ex-change"><span class="lbl">Change exercise</span>' +
+      '<select data-field="section-exerciseId" data-section-idx="' +
       secIdx +
-      '">Add set</button>';
+      '" aria-label="Change exercise">' +
+      exerciseOptionsHtml(exercises, exId) +
+      "</select></label>";
     if (inGroup) {
-      actions +=
-        '<button type="button" class="btn sm secondary" data-action="ungroup-superset" data-section-idx="' +
+      menuHtml +=
+        '<button type="button" class="log-ex-menu-action" data-action="ungroup-superset" data-section-idx="' +
         secIdx +
         '">Ungroup</button>';
     } else if (canJoin && prevSec) {
-      actions +=
-        '<button type="button" class="btn sm secondary" data-action="join-superset" data-section-idx="' +
+      menuHtml +=
+        '<button type="button" class="log-ex-menu-action" data-action="join-superset" data-section-idx="' +
         secIdx +
         '">Superset with previous</button>';
     }
-    actions += "</div>";
+    menuHtml +=
+      '<button type="button" class="log-ex-menu-action" data-action="toggle-section-note" aria-expanded="' +
+      (noteOpen ? "true" : "false") +
+      '">' +
+      (hasSectionNote ? "Edit section note" : "Add section note") +
+      "</button>" +
+      '<button type="button" class="log-ex-menu-action log-ex-menu-action--danger" data-action="remove-exercise" data-section-idx="' +
+      secIdx +
+      '">Remove exercise</button>' +
+      "</div>";
 
     return (
       '<div class="exercise-block' +
@@ -1099,28 +1277,25 @@
       '" data-exercise-id="' +
       esc(exId) +
       '">' +
-      '<div class="ex-head">' +
-      '<select data-field="section-exerciseId" data-section-idx="' +
+      '<div class="ex-head log-ex-head">' +
+      '<h3 class="log-ex-name">' +
+      esc(exLabel) +
+      "</h3>" +
+      '<button type="button" class="log-ex-menu-btn' +
+      (menuOpen ? " log-ex-menu-btn--open" : "") +
+      '" data-action="toggle-ex-menu" data-section-idx="' +
       secIdx +
-      '" aria-label="Exercise">' +
-      exerciseOptionsHtml(exercises, exId) +
-      "</select>" +
+      '" aria-expanded="' +
+      (menuOpen ? "true" : "false") +
+      '" aria-label="Exercise options">\u2026</button>' +
       "</div>" +
-      '<div class="set-head"><span>Set</span><span>Prev</span><span>Load</span><span>Reps</span><span></span></div>' +
-      rows +
-      actions +
-      '<div class="section-note" data-section-note-wrap="' +
+      menuHtml +
+      '<div class="section-note' +
+      (noteOpen ? "" : " hidden") +
+      '" data-section-note-wrap="' +
       esc(exId) +
       '">' +
-      '<button type="button" class="btn block" data-action="toggle-section-note" aria-expanded="' +
-      (noteOpen ? "true" : "false") +
-      '">' +
-      (noteOpen ? "Hide note · " : "Add note · ") +
-      esc(exLabel) +
-      "</button>" +
-      '<label class="field' +
-      (noteOpen ? "" : " hidden") +
-      '" data-section-note-body style="margin-top:8px">' +
+      '<label class="field" data-section-note-body>' +
       '<span class="lbl">How did ' +
       esc(exLabel) +
       " feel?</span>" +
@@ -1129,6 +1304,11 @@
       '" rows="2" placeholder="Optional — form, pumps, sticking point">' +
       esc(sectionVal) +
       "</textarea></label></div>" +
+      '<div class="set-head"><span>Set</span><span>Previous</span><span>+Kg</span><span>Reps</span><span></span></div>' +
+      rows +
+      '<button type="button" class="log-text-action" data-action="add-set-to-exercise" data-section-idx="' +
+      secIdx +
+      '">Add set</button>' +
       "</div>"
     );
   }
@@ -1180,10 +1360,12 @@
     if (!t || !t.getAttribute) return;
     if (t.id === "log-date") {
       draft.dateISO = t.value || todayISO();
+      schedulePersistDraft();
       return;
     }
     if (t.id === "log-bw") {
       draft.bodyweightKg = displayToKg(t.value, settings().unit);
+      schedulePersistDraft();
       return;
     }
     if (t.id === "log-link-day") {
@@ -1191,6 +1373,7 @@
         draft.programId = null;
         draft.dayId = null;
         draft.dayName = null;
+        schedulePersistDraft();
         return;
       }
       var program = SL.store.getActiveProgram();
@@ -1200,11 +1383,13 @@
         draft.dayId = day.id;
         draft.dayName = day.name || null;
       }
+      schedulePersistDraft();
       return;
     }
     if (t.id === "log-session-note") {
       ensureNotes(draft);
       draft.note = t.value || "";
+      schedulePersistDraft();
       return;
     }
 
@@ -1218,6 +1403,7 @@
       for (var ci = 0; ci < secChange.indices.length; ci++) {
         draft.sets[secChange.indices[ci]].exerciseId = newEx;
       }
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1226,6 +1412,7 @@
       ensureNotes(draft);
       var noteEx = t.getAttribute("data-exercise-id");
       if (noteEx) draft.sectionNotes[noteEx] = t.value || "";
+      schedulePersistDraft();
       return;
     }
 
@@ -1246,6 +1433,7 @@
     } else if (field === "set-note") {
       draft.sets[idx].note = t.value || "";
     }
+    schedulePersistDraft();
   }
 
   function scrollToNextOpenSet(root, fromIdx) {
@@ -1312,6 +1500,7 @@
       added.targetLoadKg = null;
       added.targetRepsLabel = "";
       draft.sets.push(added);
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1334,6 +1523,7 @@
       newRow.targetLoadKg = null;
       newRow.targetRepsLabel = "";
       draft.sets.splice(insertAt, 0, newRow);
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1350,6 +1540,7 @@
         newSupersetId();
       applySupersetToSection(prevJoin, ss);
       applySupersetToSection(joinSec, ss);
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1365,6 +1556,46 @@
           applySupersetToSection(ugSections[ui], null);
         }
       }
+      schedulePersistDraft();
+      paintLog(root);
+      return;
+    }
+
+    if (action === "toggle-session-details") {
+      syncAllFromDom(root);
+      sessionDetailsOpen = !sessionDetailsOpen;
+      schedulePersistDraft();
+      paintLog(root);
+      return;
+    }
+
+    if (action === "toggle-ex-menu") {
+      syncAllFromDom(root);
+      var menuSecIdx = Number(btn.getAttribute("data-section-idx"));
+      var menuSections = groupExerciseSections(draft.sets || []);
+      var menuSec = menuSections[menuSecIdx];
+      var menuKeyToggle = sectionMenuKey(
+        menuSecIdx,
+        menuSec ? menuSec.exerciseId : ""
+      );
+      openExMenus[menuKeyToggle] = !openExMenus[menuKeyToggle];
+      paintLog(root);
+      return;
+    }
+
+    if (action === "remove-exercise") {
+      var remSecIdx = Number(btn.getAttribute("data-section-idx"));
+      var remSections = groupExerciseSections(draft.sets || []);
+      var remSec = remSections[remSecIdx];
+      if (!remSec) return;
+      if (!confirm("Remove this exercise and all its sets?")) return;
+      var remIndices = remSec.indices.slice().sort(function (a, b) {
+        return b - a;
+      });
+      for (var ri = 0; ri < remIndices.length; ri++) {
+        draft.sets.splice(remIndices[ri], 1);
+      }
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1379,7 +1610,7 @@
       return;
     }
 
-    if (action === "new-session") {
+    if (action === "new-session" || action === "cancel-workout") {
       if (draft.sets && draft.sets.length) {
         if (!confirm("Cancel this workout? Unsaved sets on this screen will be cleared.")) {
           return;
@@ -1387,13 +1618,20 @@
       }
       hideOverlay();
       endWorkoutClock(true);
+      clearPersistedDraft();
+      openSetExtras = {};
+      openExMenus = {};
+      openSectionNotes = {};
+      sessionDetailsOpen = false;
       draft = emptyDraft();
+      removeActiveBar();
       paintLog(root);
       return;
     }
 
     if (action === "prefill-program") {
       SL.pendingStart = true;
+      clearPersistedDraft();
       draft = null;
       var prog = SL.store.getActiveProgram();
       var isWaveProg =
@@ -1413,10 +1651,12 @@
           loadLabel +
           " session…</p></div>";
         ensureDraft({ startFromProgram: true }, function () {
+          schedulePersistDraft();
           if (root.isConnected) paintLog(root);
         });
       } else {
         ensureDraft({ startFromProgram: true });
+        schedulePersistDraft();
         paintLog(root);
       }
       return;
@@ -1438,6 +1678,7 @@
       }
       SL.store.setPullupNextWaveDay(activeProg.id, wave);
       SL.pendingStart = true;
+      clearPersistedDraft();
       draft = null;
       var waveLoadLabel =
         activeProg.kind === "dip_wave" ? "dip" : "pull-up";
@@ -1446,6 +1687,7 @@
         waveLoadLabel +
         " session…</p></div>";
       ensureDraft({ startFromProgram: true, waveDay: wave }, function () {
+        schedulePersistDraft();
         if (root.isConnected) paintLog(root);
       });
       return;
@@ -1516,31 +1758,26 @@
         }
       }
       SL.pendingStart = true;
+      clearPersistedDraft();
       draft = null;
       root.innerHTML = '<div class="card"><p class="muted">Updating wave…</p></div>';
       ensureDraft({ startFromProgram: true, waveDay: "intensive" }, function () {
+        schedulePersistDraft();
         if (root.isConnected) paintLog(root);
       });
       return;
     }
 
     if (action === "toggle-section-note") {
-      var wrap = btn.closest("[data-section-note-wrap]");
+      var wrap = btn.closest(".exercise-block");
       if (!wrap) return;
-      var body = wrap.querySelector("[data-section-note-body]");
-      if (!body) return;
-      var open = body.classList.contains("hidden");
-      if (open) body.classList.remove("hidden");
-      else body.classList.add("hidden");
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-      var label = btn.textContent || "";
-      if (open) {
-        btn.textContent = label.replace(/^Add note/, "Hide note");
-        var ta = body.querySelector("textarea");
-        if (ta && typeof ta.focus === "function") ta.focus();
-      } else {
-        btn.textContent = label.replace(/^Hide note/, "Add note");
-      }
+      var noteExId = wrap.getAttribute("data-exercise-id") || "";
+      openSectionNotes[noteExId] = true;
+      var noteWrap = wrap.querySelector("[data-section-note-wrap]");
+      if (noteWrap) noteWrap.classList.remove("hidden");
+      var ta = noteWrap ? noteWrap.querySelector("textarea") : null;
+      if (ta && typeof ta.focus === "function") ta.focus();
+      btn.setAttribute("aria-expanded", "true");
       return;
     }
 
@@ -1552,6 +1789,16 @@
 
     if (action === "cycle-set-type") {
       draft.sets[idx].type = cycleSetType(draft.sets[idx].type || "normal");
+      schedulePersistDraft();
+      paintLog(root);
+      return;
+    }
+
+    if (action === "toggle-set-extra") {
+      syncAllFromDom(root);
+      ensureSetShape(draft.sets[idx]);
+      var sid = draft.sets[idx].id;
+      openSetExtras[sid] = !openSetExtras[sid];
       paintLog(root);
       return;
     }
@@ -1592,6 +1839,7 @@
       if (!prev) return;
       if (prev.loadKg != null) draft.sets[idx].loadKg = prev.loadKg;
       if (prev.reps != null) draft.sets[idx].reps = prev.reps;
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1599,6 +1847,7 @@
     if (action === "remove-set") {
       if (!confirm("Remove this set?")) return;
       draft.sets.splice(idx, 1);
+      schedulePersistDraft();
       paintLog(root);
       return;
     }
@@ -1621,6 +1870,7 @@
       set.completed = true;
       startRestForExercise(set.exerciseId);
       pendingScrollSetIdx = idx;
+      schedulePersistDraft();
       paintLog(root);
     }
   }
@@ -1764,7 +2014,13 @@
     }
 
     hideOverlay();
+    clearPersistedDraft();
     draft = null;
+    openSetExtras = {};
+    openExMenus = {};
+    openSectionNotes = {};
+    sessionDetailsOpen = false;
+    removeActiveBar();
     if (
       SL.views &&
       SL.views.summary &&
@@ -1835,7 +2091,7 @@
           '<p class="muted small">Linked to <strong>' +
           esc(draft.dayName || "pull-up wave session") +
           "</strong></p>" +
-          '<div class="row wrap" style="gap:8px;margin:8px 0">' +
+          '<div class="row wrap log-wave-row">' +
           '<button type="button" class="btn grow' +
           (draft.waveDay === "intensive" ? " btn-primary" : " secondary") +
           '" data-action="pick-wave-day" data-wave="intensive">Intensive</button>' +
@@ -1843,7 +2099,7 @@
           (draft.waveDay === "volume" ? " btn-primary" : " secondary") +
           '" data-action="pick-wave-day" data-wave="volume">Volume</button>' +
           "</div>" +
-          '<div class="row wrap" style="gap:8px;margin:0 0 8px">' +
+          '<div class="row wrap log-wave-row">' +
           '<button type="button" class="btn secondary grow" data-action="wave-add-micro">+' +
           esc(stepLabel) +
           " " +
@@ -1855,7 +2111,7 @@
           "</div>";
       } else if (program && day) {
         linkHtml =
-          '<label class="field row" style="align-items:center;gap:10px">' +
+          '<label class="field row log-link-row">' +
           '<input type="checkbox" id="log-link-day"' +
           (linked ? " checked" : "") +
           " />" +
@@ -1873,17 +2129,43 @@
           ">Prefill from program</button></p>";
       }
 
+      var summaryParts = [];
+      summaryParts.push(draft.dateISO || todayISO());
+      if (draft.bodyweightKg != null) {
+        summaryParts.push(fmtWeight(draft.bodyweightKg, unit));
+      }
+      if (linked && draft.dayName) {
+        summaryParts.push(draft.dayName);
+      } else if (linked) {
+        summaryParts.push("Program linked");
+      }
+      var summaryLine = summaryParts.join(" · ");
+
       root.innerHTML =
         '<div class="stack stack-lg log-session-layout">' +
         '<div class="card log-workout-clock-card">' +
         '<div class="log-workout-clock-row">' +
-        '<span class="lbl">Workout time</span>' +
+        '<span class="log-workout-title">' +
+        esc(workoutDisplayName()) +
+        "</span>" +
         '<span id="log-workout-clock" class="log-workout-clock mono" aria-live="polite">' +
         esc(formatElapsed(workoutElapsedMs())) +
-        "</span></div></div>" +
-        '<div class="card">' +
-        '<div class="card-head"><h2 class="card-title" style="margin:0">Session</h2>' +
-        '<button type="button" class="btn sm secondary" data-action="new-session">Cancel</button></div>' +
+        "</span>" +
+        '<button type="button" class="log-text-action log-finish-inline" data-action="complete-session">Finish</button>' +
+        "</div></div>" +
+        '<div class="card log-session-card">' +
+        '<div class="log-session-summary">' +
+        '<span class="log-session-summary-text">' +
+        esc(summaryLine) +
+        "</span>" +
+        '<button type="button" class="log-session-details-toggle" data-action="toggle-session-details" aria-expanded="' +
+        (sessionDetailsOpen ? "true" : "false") +
+        '">' +
+        (sessionDetailsOpen ? "Hide" : "Details") +
+        "</button></div>" +
+        '<div class="log-session-details' +
+        (sessionDetailsOpen ? "" : " hidden") +
+        '">' +
         '<label class="field"><span class="lbl">Date</span>' +
         '<input type="date" id="log-date" value="' +
         esc(draft.dateISO || todayISO()) +
@@ -1904,30 +2186,32 @@
         '<textarea id="log-session-note" rows="3" placeholder="Your opinion on this session overall">' +
         esc(draft.note || "") +
         "</textarea></label>" +
-        "</div>" +
-        '<div class="card">' +
-        '<div class="card-head"><h2 class="card-title" style="margin:0">Sets</h2>' +
+        '<button type="button" class="log-text-action" data-action="save-session">Save session</button>' +
+        "</div></div>" +
+        '<div class="card log-sets-card">' +
+        '<div class="card-head"><h2 class="card-title log-sets-title">Sets</h2>' +
         '<span class="muted small log-volume-meta">' +
         esc(volStats.working + " working") +
         " · " +
         esc(fmtWeight(volStats.volumeKg, unit)) +
         "</span></div>" +
         renderSetBlocks(exercises, unit) +
-        '<button type="button" class="btn block" data-action="add-set" style="margin-top:8px">Add exercise</button>' +
-        "</div>" +
-        '<div class="stack log-session-actions">' +
-        '<button type="button" class="btn block" data-action="save-session">Save session</button>' +
-        "</div>" +
+        '<div class="log-session-actions">' +
+        '<button type="button" class="log-text-action" data-action="add-set">Add exercise</button>' +
+        '<button type="button" class="log-text-action log-text-action--primary" data-action="complete-session">Finish workout</button>' +
+        '<button type="button" class="log-text-action log-text-action--danger" data-action="cancel-workout">Cancel workout</button>' +
+        "</div></div>" +
         "</div>";
 
       root.setAttribute("data-sl-view", "log");
       bindLog(root);
+      removeCompleteFab();
+      removeActiveBar();
+      schedulePersistDraft();
       if (draft.startedAt != null) {
         startWorkoutClockTick();
-        ensureCompleteFab();
       } else {
         stopWorkoutClockTick();
-        removeCompleteFab();
         syncWorkoutClockUI();
       }
       if (pendingScrollSetIdx != null) {
@@ -1985,7 +2269,9 @@
         waveSessionLabel +
         " session…</p></div>";
       draft = null;
+      clearPersistedDraft();
       ensureDraft(opts, function () {
+        schedulePersistDraft();
         if (root.isConnected) paintLog(root);
       });
       return;
@@ -2410,5 +2696,12 @@
     title: function () {
       return "History";
     },
+  };
+
+  SL.log = {
+    hasActiveSession: hasActiveSession,
+    activeSessionInfo: activeSessionInfo,
+    syncActiveBar: syncActiveBar,
+    resumeActiveSession: resumeActiveSession,
   };
 })();
