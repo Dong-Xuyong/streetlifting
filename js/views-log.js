@@ -13,6 +13,8 @@
   var draft = null;
   /** @type {string|null} */
   var historyDetailId = null;
+  /** @type {string|null} expanded session id on history day list */
+  var historyExpandedId = null;
   /** @type {{y:number,m:number}|null} month is 0-based */
   var calMonth = null;
   /** @type {string|null} YYYY-MM-DD */
@@ -35,6 +37,8 @@
   var openExMenus = {};
   /** @type {Object.<string, boolean>} exerciseId -> section note forced open */
   var openSectionNotes = {};
+  /** @type {string|null} draft.id last painted into #log-date (guards stale date sync) */
+  var paintedDraftId = null;
 
   function clearPersistedDraft() {
     try {
@@ -46,11 +50,18 @@
 
   function persistDraftNow() {
     try {
+      if (!draft) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      var dateChosen =
+        normalizeDateISO(draft.dateISO) &&
+        normalizeDateISO(draft.dateISO) !== todayISO();
       if (
-        !draft ||
-        (draft.startedAt == null &&
-          !(draft.sets && draft.sets.length) &&
-          !(draft.note && String(draft.note).trim()))
+        draft.startedAt == null &&
+        !(draft.sets && draft.sets.length) &&
+        !(draft.note && String(draft.note).trim()) &&
+        !dateChosen
       ) {
         localStorage.removeItem(DRAFT_KEY);
         return;
@@ -279,6 +290,48 @@
     var m = String(d.getMonth() + 1).padStart(2, "0");
     var day = String(d.getDate()).padStart(2, "0");
     return d.getFullYear() + "-" + m + "-" + day;
+  }
+
+  /** Valid YYYY-MM-DD or null. */
+  function normalizeDateISO(value) {
+    var s = String(value == null ? "" : value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    return s;
+  }
+
+  /**
+   * Fallback session date when no program schedule applies.
+   * Prefer history calendar selection, then today. Do not read #log-date here —
+   * that can re-apply "today" onto a freshly loaded scheduled program day.
+   */
+  function resolveSessionDateISO() {
+    if (draft) {
+      var fromDraft = normalizeDateISO(draft.dateISO);
+      if (fromDraft) return fromDraft;
+    }
+    var fromCal = normalizeDateISO(calSelectedISO);
+    if (fromCal) return fromCal;
+    return todayISO();
+  }
+
+  /** Keep bodyweight/note (and date only for the same draft) across re-renders. */
+  function syncSessionMetaFromDom(root, opts) {
+    if (!draft || !root) return;
+    opts = opts || {};
+    var dateEl = root.querySelector("#log-date");
+    var bwEl = root.querySelector("#log-bw");
+    var noteEl = root.querySelector("#log-session-note");
+    // Only pull date from the form when this paint still belongs to the same draft.
+    // Otherwise a stale #log-date (often "today") overwrites the program's defined day.
+    if (dateEl && opts.allowDate !== false) {
+      var iso = normalizeDateISO(dateEl.value);
+      if (iso) draft.dateISO = iso;
+    }
+    if (bwEl) draft.bodyweightKg = displayToKg(bwEl.value, settings().unit);
+    if (noteEl) {
+      ensureNotes(draft);
+      draft.note = noteEl.value || "";
+    }
   }
 
   function uid() {
@@ -511,7 +564,7 @@
     var s = settings();
     return {
       id: uid(),
-      dateISO: todayISO(),
+      dateISO: resolveSessionDateISO(),
       bodyweightKg: s.bodyweightKg,
       programId: null,
       dayId: null,
@@ -545,6 +598,10 @@
 
   function ensureWorkoutStarted() {
     if (!draft) return;
+    var root = document.getElementById("view-root");
+    if (root && paintedDraftId && draft.id === paintedDraftId) {
+      syncSessionMetaFromDom(root);
+    }
     if (draft.startedAt == null || isNaN(Number(draft.startedAt))) {
       draft.startedAt = Date.now();
     }
@@ -657,7 +714,8 @@
     }
     return {
       id: uid(),
-      dateISO: todayISO(),
+      dateISO:
+        normalizeDateISO(day && day.dateISO) || todayISO(),
       bodyweightKg: s.bodyweightKg,
       programId: program ? program.id : null,
       dayId: day ? day.id : null,
@@ -706,7 +764,8 @@
     }
     return {
       id: uid(),
-      dateISO: (session && session.dateISO) || todayISO(),
+      // Always the schedule day from startDate + week/day offset — never "today".
+      dateISO: normalizeDateISO(session && session.dateISO) || todayISO(),
       bodyweightKg: s.bodyweightKg,
       programId: program ? program.id : null,
       dayId: session ? session.id : null,
@@ -748,6 +807,7 @@
     }
     return {
       id: uid(),
+      // Wave days are not calendar-scheduled; logging day defaults to today.
       dateISO: todayISO(),
       bodyweightKg: s.bodyweightKg,
       programId: program ? program.id : null,
@@ -845,9 +905,28 @@
           .loadSquatCycleScheme()
           .then(function (scheme) {
             var session = SL.store.nextCycleSession(program, scheme);
-            draft = session
-              ? draftFromCycleSession(program, session)
-              : emptyDraft();
+            var scheduled = normalizeDateISO(session && session.dateISO);
+            // Resume an in-progress draft for the same cycle day, but always
+            // apply the schedule date (never leave a leftover "today").
+            if (
+              draft &&
+              session &&
+              draft.cycleKey === session.id &&
+              draft.startedAt != null &&
+              draft.sets &&
+              draft.sets.length
+            ) {
+              if (scheduled) draft.dateISO = scheduled;
+              draft.dayName = session.name || draft.dayName;
+              draft.week = session.week;
+              draft.dayNum = session.day;
+              draft.dayId = session.id;
+              draft.programId = program.id;
+            } else {
+              draft = session
+                ? draftFromCycleSession(program, session)
+                : emptyDraft();
+            }
             if (done) done(draft);
             else if (typeof SL.refresh === "function") SL.refresh();
           })
@@ -957,8 +1036,8 @@
     overlayEl = document.createElement("div");
     overlayEl.id = "timer-overlay";
     overlayEl.className = "timer-overlay hidden";
-    // Docked strip, not a modal: resting must never block the rest of the app.
-    overlayEl.setAttribute("role", "region");
+    overlayEl.setAttribute("role", "dialog");
+    overlayEl.setAttribute("aria-modal", "true");
     overlayEl.setAttribute("aria-label", "Rest timer");
     overlayEl.innerHTML =
       '<div class="rest-bar" data-rest-bar>' +
@@ -1359,7 +1438,7 @@
     var t = e.target;
     if (!t || !t.getAttribute) return;
     if (t.id === "log-date") {
-      draft.dateISO = t.value || todayISO();
+      draft.dateISO = normalizeDateISO(t.value) || todayISO();
       schedulePersistDraft();
       return;
     }
@@ -1624,6 +1703,7 @@
       openSectionNotes = {};
       sessionDetailsOpen = false;
       draft = emptyDraft();
+      paintedDraftId = null;
       removeActiveBar();
       paintLog(root);
       return;
@@ -1633,6 +1713,7 @@
       SL.pendingStart = true;
       clearPersistedDraft();
       draft = null;
+      paintedDraftId = null;
       var prog = SL.store.getActiveProgram();
       var isWaveProg =
         prog &&
@@ -1680,6 +1761,7 @@
       SL.pendingStart = true;
       clearPersistedDraft();
       draft = null;
+      paintedDraftId = null;
       var waveLoadLabel =
         activeProg.kind === "dip_wave" ? "dip" : "pull-up";
       root.innerHTML =
@@ -1760,6 +1842,7 @@
       SL.pendingStart = true;
       clearPersistedDraft();
       draft = null;
+      paintedDraftId = null;
       root.innerHTML = '<div class="card"><p class="muted">Updating wave…</p></div>';
       ensureDraft({ startFromProgram: true, waveDay: "intensive" }, function () {
         schedulePersistDraft();
@@ -1916,12 +1999,7 @@
   function syncAllFromDom(root) {
     if (!draft || !root) return;
     ensureNotes(draft);
-    var dateEl = root.querySelector("#log-date");
-    var bwEl = root.querySelector("#log-bw");
-    var noteEl = root.querySelector("#log-session-note");
-    if (dateEl) draft.dateISO = dateEl.value || todayISO();
-    if (bwEl) draft.bodyweightKg = displayToKg(bwEl.value, settings().unit);
-    if (noteEl) draft.note = noteEl.value || "";
+    syncSessionMetaFromDom(root);
     var rows = root.querySelectorAll(".set-row[data-set-idx]");
     for (var i = 0; i < rows.length; i++) {
       var idx = Number(rows[i].getAttribute("data-set-idx"));
@@ -2016,6 +2094,7 @@
     hideOverlay();
     clearPersistedDraft();
     draft = null;
+    paintedDraftId = null;
     openSetExtras = {};
     openExMenus = {};
     openSectionNotes = {};
@@ -2036,6 +2115,17 @@
 
   function paintLog(root) {
     ensureOverlay();
+    // Preserve in-form edits only when re-painting the same draft. A new program
+    // draft must keep its scheduled dateISO, not a stale #log-date ("today").
+    if (
+      draft &&
+      root &&
+      paintedDraftId &&
+      draft.id === paintedDraftId &&
+      root.querySelector("#log-date")
+    ) {
+      syncSessionMetaFromDom(root);
+    }
     if (!draft) draft = emptyDraft();
     if (draft.sets && draft.sets.length && (draft.startedAt == null || isNaN(Number(draft.startedAt)))) {
       ensureWorkoutStarted();
@@ -2204,6 +2294,7 @@
         "</div>";
 
       root.setAttribute("data-sl-view", "log");
+      paintedDraftId = draft ? draft.id : null;
       bindLog(root);
       removeCompleteFab();
       removeActiveBar();
@@ -2223,16 +2314,26 @@
   }
 
   function renderLog(root, opts) {
+    // History calendar "Start workout" passes the selected day explicitly.
+    if (opts && opts.dateISO) {
+      var optDate = normalizeDateISO(opts.dateISO);
+      if (optDate) {
+        calSelectedISO = optDate;
+        // Program-schedule starts own the DATE field; don't stamp history over them.
+        if (!(opts.startFromProgram || SL.pendingStart)) {
+          if (!draft) draft = emptyDraft();
+          draft.dateISO = optDate;
+        }
+      }
+    }
     var program = SL.store.getActiveProgram();
     var starting =
       SL.pendingStart || (opts && opts.startFromProgram);
-    if (
-      starting &&
-      program &&
-      program.kind === "percent_cycle" &&
-      (!draft || !draft.cycleKey)
-    ) {
+    // Load (or refresh) the squat schedule day so DATE is the defined program
+    // day, not a leftover "today" from a prior empty draft / stale #log-date.
+    if (starting && program && program.kind === "percent_cycle") {
       root.innerHTML = '<div class="card"><p class="muted">Loading squat session…</p></div>';
+      paintedDraftId = null;
       ensureDraft(opts || null, function () {
         if (root.isConnected) paintLog(root);
       });
@@ -2250,6 +2351,7 @@
         '<div class="card"><p class="muted">Loading ' +
         waveSessionLabel +
         " session…</p></div>";
+      paintedDraftId = null;
       ensureDraft(opts || null, function () {
         if (root.isConnected) paintLog(root);
       });
@@ -2269,6 +2371,7 @@
         waveSessionLabel +
         " session…</p></div>";
       draft = null;
+      paintedDraftId = null;
       clearPersistedDraft();
       ensureDraft(opts, function () {
         schedulePersistDraft();
@@ -2295,6 +2398,59 @@
     return parts.join(", ") || "No sets";
   }
 
+  /** Compact set tables for inline history expand / detail page. */
+  function renderSessionSetsHtml(sess, names, unit) {
+    var sets = sess && sess.sets ? sess.sets : [];
+    var exIds = uniqueExerciseIds(sets);
+    if (!exIds.length) {
+      return '<p class="muted small">No sets logged.</p>';
+    }
+    var html = "";
+    for (var e = 0; e < exIds.length; e++) {
+      var exId = exIds[e];
+      var exRows = "";
+      var workingNum = 0;
+      for (var j = 0; j < sets.length; j++) {
+        var set = sets[j];
+        if (set.exerciseId !== exId) continue;
+        var st = set.type || "normal";
+        if (st !== "warmup") workingNum += 1;
+        var marker = setTypeMarker(st, workingNum || 1);
+        var typeCls = setTypeClass(st);
+        var setNote =
+          typeof set.note === "string" && String(set.note).trim()
+            ? '<div class="set-note hist-set-note">' + esc(set.note) + "</div>"
+            : "";
+        exRows +=
+          '<tr class="' +
+          (st === "warmup" ? "set-row--warmup" : "") +
+          '"><td><span class="' +
+          typeCls +
+          '">' +
+          esc(marker) +
+          "</span></td><td>" +
+          esc(fmtWeight(set.loadKg, unit)) +
+          "</td><td>" +
+          esc(set.reps != null ? set.reps : "\u2014") +
+          "</td><td>" +
+          esc(set.rpe != null ? set.rpe : "\u2014") +
+          "</td></tr>" +
+          (setNote
+            ? '<tr class="hist-set-note-row"><td colspan="4">' + setNote + "</td></tr>"
+            : "");
+      }
+      html +=
+        '<div class="hist-ex-block">' +
+        '<div class="hist-ex-name">' +
+        esc(names[exId] || exId) +
+        "</div>" +
+        '<table class="detail-set-table"><thead><tr><th>Set</th><th>Load</th><th>Reps</th><th>RPE</th></tr></thead><tbody>' +
+        exRows +
+        "</tbody></table></div>";
+    }
+    return html;
+  }
+
   function onHistoryClick(e) {
     var root = e.currentTarget;
     if (root.getAttribute("data-sl-view") !== "history") return;
@@ -2305,7 +2461,12 @@
     if (actionBtn) {
       var action = actionBtn.getAttribute("data-hist-action");
       if (action === "goto-log") {
-        if (SL.navigate) SL.navigate("log");
+        if (SL.navigate) {
+          SL.navigate(
+            "log",
+            calSelectedISO ? { dateISO: calSelectedISO } : null
+          );
+        }
         return;
       }
       if (action === "goto-summary") {
@@ -2346,6 +2507,21 @@
         if (!dayIso) return;
         calSelectedISO = dayIso;
         historyDetailId = null;
+        historyExpandedId = null;
+        paintHistory(root);
+        return;
+      }
+      if (action === "toggle-expand") {
+        var expandId = actionBtn.getAttribute("data-session-id");
+        if (!expandId) return;
+        historyExpandedId = historyExpandedId === expandId ? null : expandId;
+        paintHistory(root);
+        return;
+      }
+      if (action === "open-detail") {
+        var openId = actionBtn.getAttribute("data-session-id");
+        if (!openId) return;
+        historyDetailId = openId;
         paintHistory(root);
         return;
       }
@@ -2376,13 +2552,14 @@
         if (!confirm("Delete this session?")) return;
         SL.store.deleteSession(delId);
         historyDetailId = null;
+        if (historyExpandedId === delId) historyExpandedId = null;
         paintHistory(root);
         return;
       }
     }
 
     var item = t.closest("[data-session-id]");
-    if (item && item.classList.contains("list-item")) {
+    if (item && item.classList.contains("list-item") && !item.getAttribute("data-hist-action")) {
       historyDetailId = item.getAttribute("data-session-id");
       paintHistory(root);
     }
@@ -2522,17 +2699,54 @@
             }
           }
         }
+        var expanded = historyExpandedId === sess.id;
+        var metaBits = [];
+        if (hasNotes) metaBits.push("Has notes");
+        metaBits.push(bw);
+        if (sess.durationSec != null && sess.durationSec > 0) {
+          metaBits.push(formatElapsed(sess.durationSec * 1000));
+        }
         html +=
-          '<button type="button" class="list-item session-card" data-session-id="' +
+          '<div class="hist-session' +
+          (expanded ? " is-open" : "") +
+          '">' +
+          '<button type="button" class="list-item session-card" data-hist-action="toggle-expand" data-session-id="' +
+          esc(sess.id) +
+          '" aria-expanded="' +
+          (expanded ? "true" : "false") +
+          '" aria-controls="hist-expand-' +
           esc(sess.id) +
           '">' +
           '<div class="name">' +
           esc(sessionSummary(sess, names, unit)) +
           '<div class="muted small">' +
-          esc(hasNotes ? "Has notes · " + bw : bw) +
+          esc(metaBits.join(" · ")) +
           "</div></div>" +
-          '<span class="chev">›</span>' +
+          '<span class="chev" aria-hidden="true">' +
+          (expanded ? "▾" : "›") +
+          "</span>" +
           "</button>";
+        if (expanded) {
+          html +=
+            '<div class="hist-session-details" id="hist-expand-' +
+            esc(sess.id) +
+            '">' +
+            renderSessionSetsHtml(sess, names, unit) +
+            '<div class="stack hist-session-actions">' +
+            '<button type="button" class="btn sm block" data-hist-action="open-detail" data-session-id="' +
+            esc(sess.id) +
+            '">Notes &amp; more</button>' +
+            '<button type="button" class="btn sm block" data-hist-action="edit" data-session-id="' +
+            esc(sess.id) +
+            '">Edit sets</button>' +
+            (SL.views && SL.views.summary
+              ? '<button type="button" class="btn sm block" data-hist-action="goto-summary" data-session-id="' +
+                esc(sess.id) +
+                '">View summary</button>'
+              : "") +
+            "</div></div>";
+        }
+        html += "</div>";
       }
       html += "</div>";
     }

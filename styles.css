@@ -433,7 +433,7 @@ body:has(.active-workout-bar) .toast {
   border-top: none;
 }
 
-/* ---------- Tab bar (7 tabs — compact) ---------- */
+/* ---------- Tab bar (6 tabs — compact) ---------- */
 #tabbar {
   order: 3;
   display: flex;
@@ -912,6 +912,57 @@ hr.sep::after {
   opacity: 0.7;
 }
 
+/* ---------- History day list expand ---------- */
+.hist-session {
+  margin-bottom: 8px;
+}
+
+.hist-session > .list-item {
+  margin-bottom: 0;
+}
+
+.hist-session.is-open > .list-item {
+  border-color: rgba(119, 183, 255, 0.35);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.hist-session.is-open > .list-item .chev {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.hist-session-details {
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--bg-card);
+  background-image: var(--steel-sheen);
+}
+
+.hist-ex-block + .hist-ex-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.hist-ex-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.hist-session-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.hist-session-actions .btn {
+  margin: 0;
+}
+
 /* ---------- Chips ---------- */
 .chip-row {
   display: flex;
@@ -1221,17 +1272,24 @@ h2.head,
   font-weight: 600;
 }
 
-/* ---------- Rest timer strip ---------- */
-/* Docked above the active workout bar and the tab bar. Never covers the app. */
+/* ---------- Rest timer (fullscreen) ---------- */
 .timer-overlay {
-  order: 1;
-  flex: 0 0 auto;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: var(--bg-raised);
-  border-top: 1px solid var(--border);
+  justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 20px
+    calc(28px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(
+      ellipse 90% 55% at 50% 35%,
+      rgba(119, 183, 255, 0.08) 0%,
+      transparent 58%
+    ),
+    var(--bg);
+  border: none;
 }
 
 .timer-overlay.hidden {
@@ -1239,21 +1297,21 @@ h2.head,
 }
 
 .timer-overlay .timer-label {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   color: var(--text-dim);
 }
 
 .timer-overlay .timer-display {
   font-family: var(--font-load);
-  font-size: 1.5rem;
+  font-size: clamp(4.5rem, 22vw, 7.5rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
   color: var(--accent);
-  line-height: 1;
+  line-height: 0.95;
 }
 
 .timer-overlay .timer-display.done {
@@ -1275,9 +1333,12 @@ h2.head,
 
 .timer-overlay .timer-actions {
   display: flex;
-  gap: 6px;
-  width: auto;
-  margin-left: auto;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+  margin: 0;
+  justify-content: center;
 }
 
 /* ---------- Empty states ---------- */
@@ -2421,12 +2482,13 @@ h2.head,
 /* ---------- Rest timer bar (inside .timer-overlay) ---------- */
 .rest-bar {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 28px;
   width: 100%;
-  max-width: none;
-  text-align: left;
+  max-width: 420px;
+  text-align: center;
 }
 
 .timer-overlay .rest-bar .timer-label {
@@ -2436,13 +2498,13 @@ h2.head,
 .rest-bar-time,
 .timer-overlay .rest-bar-time.timer-display {
   font-family: var(--font-load);
-  font-size: 1.5rem;
+  font-size: clamp(4.5rem, 22vw, 7.5rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  line-height: 1;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
   color: var(--accent);
-  min-width: 3.6ch;
+  min-width: 0;
   text-shadow: none;
 }
 
@@ -2467,23 +2529,27 @@ h2.head,
 .rest-bar-actions,
 .timer-overlay .rest-bar-actions.timer-actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  width: auto;
-  max-width: none;
-  margin: 0 0 0 auto;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+  margin: 0;
 }
 
 .rest-bar-adjust,
 .rest-bar-skip {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-height: var(--touch);
-  min-width: var(--touch);
-  padding-inline: 10px;
-  font-size: 0.82rem;
+  min-width: 88px;
+  padding-inline: 14px;
+  font-size: 0.9rem;
   white-space: nowrap;
+}
+
+.rest-bar-skip {
+  flex: 1 1 100%;
 }
 
 /* ---------- Exercise library ---------- */

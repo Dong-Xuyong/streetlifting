@@ -4,7 +4,8 @@
 
   const SL = (window.SL = window.SL || {});
 
-  const TOP_TABS = ["home", "log", "history", "analytics", "program", "exercises", "settings"];
+  // Log is reached from Home CTAs / History edit — not a tabbar destination.
+  const TOP_TABS = ["home", "history", "analytics", "program", "exercises", "settings"];
 
   let currentTab = "home";
   let pendingOpts = null;
