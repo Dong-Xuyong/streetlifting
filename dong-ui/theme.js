@@ -6,7 +6,7 @@
   "use strict";
 
   var STORAGE_KEY = "dong-ui-theme";
-  var LIGHT_META = "#f6f4ef";
+  var LIGHT_META = "#eceff4";
   var DARK_META = "#141414";
 
   function systemPrefersDark() {

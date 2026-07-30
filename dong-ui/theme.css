@@ -4,37 +4,37 @@
  */
 
 :root {
-  --background: 44 22% 96%;
-  --foreground: 36 25% 4%;
+  --background: 213 28% 94%;
+  --foreground: 222 47% 7%;
   --card: 0 0% 100%;
-  --card-foreground: 36 25% 4%;
+  --card-foreground: 222 47% 7%;
   --popover: 0 0% 100%;
-  --popover-foreground: 36 25% 4%;
-  --primary: 221.2 83.2% 53.3%;
+  --popover-foreground: 222 47% 7%;
+  --primary: 212 82% 42%;
   --primary-foreground: 210 40% 98%;
-  --secondary: 44 15% 91%;
-  --secondary-foreground: 36 15% 18%;
-  --muted: 44 15% 91%;
-  --muted-foreground: 40 8% 36%;
-  --accent: 44 15% 91%;
-  --accent-foreground: 36 15% 18%;
-  --destructive: 0 84.2% 60.2%;
+  --secondary: 214 20% 91%;
+  --secondary-foreground: 219 26% 20%;
+  --muted: 214 20% 91%;
+  --muted-foreground: 215 16% 34%;
+  --accent: 214 20% 91%;
+  --accent-foreground: 219 26% 20%;
+  --destructive: 4 64% 55%;
   --destructive-foreground: 210 40% 98%;
-  --border: 44 14% 87%;
-  --input: 44 14% 87%;
-  --ring: 221.2 83.2% 53.3%;
+  --border: 213 26% 84%;
+  --input: 213 26% 84%;
+  --ring: 212 82% 42%;
   --radius: 0.5rem;
 
-  --bg-hex: #f6f4ef;
-  --fg-hex: #0d0b08;
+  --bg-hex: #eceff4;
+  --fg-hex: #0b1016;
   --card-hex: #ffffff;
-  --primary-hex: #2563eb;
-  --muted-hex: #ebeae5;
-  --muted-fg-hex: #5c574f;
-  --border-hex: #e2e0d9;
-  --theme-color: #f6f4ef;
+  --primary-hex: #1565c0;
+  --muted-hex: #e1e6ed;
+  --muted-fg-hex: #4a5568;
+  --border-hex: #cfd8e3;
+  --theme-color: #eceff4;
 
-  --nav-glass-bg: 44 22% 96% / 0.7;
+  --nav-glass-bg: 213 28% 94% / 0.7;
   --nav-glass-blur: 20px;
   --nav-glass-saturate: 1.8;
 
