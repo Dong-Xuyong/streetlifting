@@ -12,11 +12,6 @@
     { id: "squat", label: "Squat" },
   ];
 
-  var REL_LIFTS = [
-    { id: "pullup", label: "Pull-up" },
-    { id: "dip", label: "Dip" },
-  ];
-
   var METRICS = [
     { id: "e1rm", label: "Est. 1RM" },
     { id: "weight", label: "Heaviest" },
@@ -236,7 +231,6 @@
       if (!sess) continue;
       var dateISO = sess.dateISO || "";
       if (!dateISO) continue;
-      var bw = sess.bodyweightKg;
       var sets = sess.sets || [];
       var bestE1rm = null;
       var heaviest = null;
@@ -255,20 +249,16 @@
         any = true;
         var load = Number(set.loadKg) || 0;
         var reps = Number(set.reps) || 0;
-        var e;
-        if (typeof store().e1rm === "function") {
-          e = store().e1rm(bw, load, reps);
-        } else {
-          e = e1rmAdded(load, reps);
-        }
+        var e =
+          typeof store().e1rm === "function"
+            ? store().e1rm(0, load, reps)
+            : e1rmAdded(load, reps);
         if (bestE1rm == null || e > bestE1rm) bestE1rm = e;
         if (heaviest == null || load > heaviest) heaviest = load;
-        var vol;
-        if (typeof store().setVolumeKg === "function") {
-          vol = store().setVolumeKg(set, bw);
-        } else {
-          vol = load * reps;
-        }
+        var vol =
+          typeof store().setVolumeKg === "function"
+            ? store().setVolumeKg(set)
+            : load * reps;
         if (bestSetVol == null || vol > bestSetVol) bestSetVol = vol;
         sessionVol += vol;
       }
@@ -1381,53 +1371,6 @@
     return html;
   }
 
-  function renderRelativeSection() {
-    var html =
-      '<div class="card">' +
-      "<h2>Relative strength</h2>" +
-      '<p class="muted small chart-section-hint">Added-load e1RM ÷ bodyweight for pull-up and dip</p>';
-
-    var any = false;
-    REL_LIFTS.forEach(function (lift) {
-      var best = bestAddedSet(lift.id);
-      if (!best) {
-        html +=
-          '<div class="pr-row">' +
-          "<div><div class=\"name\">" +
-          esc(lift.label) +
-          '</div><div class="sub">No best set yet</div></div>' +
-          '<div class="value muted">—</div></div>';
-        return;
-      }
-      any = true;
-      var bw =
-        Number(best.bodyweightKg) ||
-        Number(store().get().settings.bodyweightKg) ||
-        0;
-      var ratio = bw > 0 ? best.e1rm / bw : null;
-      html +=
-        '<div class="pr-row">' +
-        "<div><div class=\"name\">" +
-        esc(lift.label) +
-        '</div><div class="sub">e1RM ' +
-        esc(fmtLoad(best.e1rm)) +
-        (bw > 0 ? " / BW " + esc(fmtLoad(bw)) : " · set bodyweight in Settings") +
-        '</div></div><div class="value">' +
-        (ratio != null ? esc(fmt(ratio, 2) + "×") : "—") +
-        "</div></div>";
-    });
-
-    if (!any) {
-      html += sectionEmpty(
-        "No relative numbers",
-        "Log pull-ups or dips with bodyweight set."
-      );
-    }
-
-    html += "</div>";
-    return html;
-  }
-
   function renderVolumeSection(weeks) {
     var html =
       '<div class="card">' +
@@ -1540,14 +1483,14 @@
     var weeks = weeklyVolume();
     var hints = stallHints();
 
-    // Progress (Strong) → PR feed → competition PRs → meet total → trends → relative → volume → coaching
+    // Progress → PR feed → competition PRs → meet total → trends → volume → coaching
+    // All metrics use added load only (bodyweight never folded into e1RM / volume).
     root.innerHTML =
       renderProgressSection() +
       renderPrFeed() +
       renderPrSection() +
       renderTotalSection() +
       renderE1rmSection() +
-      renderRelativeSection() +
       renderVolumeSection(weeks) +
       renderStallSection(hints);
 

@@ -12,13 +12,6 @@
   var PULLUP_WAVE_URL = "data/pullup-wave-cycle.json";
   var DIP_WAVE_URL = "data/dip-wave-cycle.json";
 
-  var BW_LOADED_IDS = {
-    pullup: true,
-    dip: true,
-    muscleup: true,
-    chinup: true,
-  };
-
   var state = null;
   var revisionCounter = 0;
   var builtinsCache = null;
@@ -724,22 +717,15 @@
     return true;
   }
 
-  function isBodyweightLoaded(exerciseId) {
-    if (exerciseId == null) return false;
-    if (BW_LOADED_IDS[exerciseId]) return true;
-    var ex = exerciseById(exerciseId);
-    if (!ex) return false;
-    return ex.equipment === "bodyweight" || ex.equipment === "belt";
-  }
-
+  /**
+   * Volume is always added load × reps. Bodyweight is never folded in —
+   * stats, PRs, and summaries all use belt/external load only.
+   * `bodyweightKg` is kept for call-site compatibility and ignored.
+   */
   function setVolumeKg(set, bodyweightKg) {
     if (!countsForVolume(set)) return 0;
     var load = Number(set.loadKg) || 0;
     var reps = Number(set.reps) || 0;
-    if (isBodyweightLoaded(set.exerciseId)) {
-      var bw = Number(bodyweightKg) || 0;
-      return (bw + load) * reps;
-    }
     return load * reps;
   }
 
@@ -803,7 +789,6 @@
     if (!sess) return emptySessionSummary();
 
     var sets = Array.isArray(sess.sets) ? sess.sets : [];
-    var bw = sess.bodyweightKg;
     var setCount = 0;
     var workingSetCount = 0;
     var totalVolumeKg = 0;
@@ -817,7 +802,7 @@
       setCount += 1;
       if (!countsForVolume(set)) continue;
       workingSetCount += 1;
-      var vol = setVolumeKg(set, bw);
+      var vol = setVolumeKg(set);
       totalVolumeKg += vol;
       var exId = set.exerciseId;
       if (exId == null) continue;
@@ -834,7 +819,7 @@
       var bucket = byEx[exId];
       bucket.sets += 1;
       bucket.volumeKg += vol;
-      var e = e1rm(bw, set.loadKg, set.reps);
+      var e = e1rm(0, set.loadKg, set.reps);
       if (e > bucket.topE1rm) {
         bucket.topE1rm = e;
         bucket.topSet = set;
@@ -896,13 +881,14 @@
     };
   }
 
+  /**
+   * Epley e1RM on added load only. `bwKg` is ignored (kept for API compatibility).
+   */
   function e1rm(bwKg, loadKg, reps) {
-    var bw = Number(bwKg) || 0;
     var load = Number(loadKg) || 0;
     var r = Number(reps) || 0;
-    var total = bw + load;
-    if (r <= 1) return total;
-    return total * (1 + r / 30);
+    if (r <= 1) return load;
+    return load * (1 + r / 30);
   }
 
   function historyFor(exerciseId) {
@@ -917,7 +903,6 @@
     for (var i = 0; i < sessions.length; i++) {
       var sess = sessions[i];
       var sets = Array.isArray(sess.sets) ? sess.sets : [];
-      var bw = sess.bodyweightKg;
       for (var j = 0; j < sets.length; j++) {
         var set = sets[j];
         if (!set || typeof set !== "object") continue;
@@ -926,10 +911,10 @@
         if (set.type === "warmup") continue;
         out.push({
           dateISO: sess.dateISO,
-          bodyweightKg: bw,
+          bodyweightKg: sess.bodyweightKg,
           loadKg: set.loadKg,
           reps: set.reps,
-          e1rm: e1rm(bw, set.loadKg, set.reps),
+          e1rm: e1rm(0, set.loadKg, set.reps),
         });
       }
     }

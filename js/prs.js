@@ -37,10 +37,6 @@
     return Array.isArray(list) ? list : [];
   }
 
-  function safeGet() {
-    return safeCall("get", [], null);
-  }
-
   function safeCountsForVolume(set) {
     var v = safeCall("countsForVolume", [set], false);
     return !!v;
@@ -71,19 +67,6 @@
       .replace(/'/g, "&#39;");
   }
 
-  function bodyweightFor(session) {
-    if (session && session.bodyweightKg != null) {
-      var sbw = Number(session.bodyweightKg);
-      if (isFinite(sbw)) return sbw;
-    }
-    var state = safeGet();
-    if (state && state.settings && state.settings.bodyweightKg != null) {
-      var gbw = Number(state.settings.bodyweightKg);
-      if (isFinite(gbw)) return gbw;
-    }
-    return 0;
-  }
-
   /** Warm-ups, incomplete sets, and zero-rep sets never establish records. */
   function isEligible(set) {
     if (!set || typeof set !== "object") return false;
@@ -93,13 +76,14 @@
     return true;
   }
 
-  function metricsFor(set, bwKg) {
+  /** Metrics use added load only — bodyweight is never included. */
+  function metricsFor(set) {
     var load = Number(set.loadKg) || 0;
     var reps = Number(set.reps) || 0;
     return {
       weight: load,
-      e1rm: safeE1rm(bwKg, load, reps),
-      volume: safeSetVolumeKg(set, bwKg),
+      e1rm: safeE1rm(0, load, reps),
+      volume: safeSetVolumeKg(set, 0),
     };
   }
 
@@ -159,9 +143,9 @@
    * Apply one eligible set to running bests.
    * Returns list of kind strings that are new strict records.
    */
-  function applySetToBests(bests, set, dateISO, bwKg) {
+  function applySetToBests(bests, set, dateISO) {
     var broken = [];
-    var m = metricsFor(set, bwKg);
+    var m = metricsFor(set);
     var k;
     for (k = 0; k < KINDS.length; k++) {
       var kind = KINDS[k];
@@ -184,8 +168,8 @@
     return broken;
   }
 
-  function applySetToValues(values, set, bwKg) {
-    var m = metricsFor(set, bwKg);
+  function applySetToValues(values, set) {
+    var m = metricsFor(set);
     var k;
     for (k = 0; k < KINDS.length; k++) {
       var kind = KINDS[k];
@@ -214,7 +198,6 @@
         priorValuesBySession[sid] = clonePriorMap(runningValues);
       }
 
-      var bw = bodyweightFor(sess);
       var dateISO = sess.dateISO || "";
       var sets = Array.isArray(sess.sets) ? sess.sets : [];
 
@@ -227,8 +210,8 @@
         if (!allBests[exId]) allBests[exId] = emptyRecordBundle();
         if (!runningValues[exId]) runningValues[exId] = emptyValueBundle();
 
-        var broken = applySetToBests(allBests[exId], set, dateISO, bw);
-        applySetToValues(runningValues[exId], set, bw);
+        var broken = applySetToBests(allBests[exId], set, dateISO);
+        applySetToValues(runningValues[exId], set);
 
         var bi;
         for (bi = 0; bi < broken.length; bi++) {
@@ -365,13 +348,12 @@
       if (!sess) continue;
       if (sess === session) break;
       if (session.id != null && sess.id === session.id) break;
-      var bw = bodyweightFor(sess);
       var sets = Array.isArray(sess.sets) ? sess.sets : [];
       for (j = 0; j < sets.length; j++) {
         var s = sets[j];
         if (!s || s.exerciseId !== exId) continue;
         if (!isEligible(s)) continue;
-        applySetToValues(values, s, bw);
+        applySetToValues(values, s);
       }
     }
     return values;
@@ -404,7 +386,6 @@
     var idx = indexOfSet(session, set);
     /* Not yet in the array: treat all current rows as prior. */
     var end = idx < 0 ? sets.length : idx;
-    var bw = bodyweightFor(session);
     var i;
 
     for (i = 0; i < end; i++) {
@@ -412,7 +393,7 @@
       if (!other || other.exerciseId !== exId) continue;
       if (!isEligible(other)) continue;
       if (set.id != null && other.id === set.id) continue;
-      applySetToValues(values, other, bw);
+      applySetToValues(values, other);
     }
 
     return values;
@@ -423,8 +404,7 @@
     if (!set || typeof set !== "object") return out;
     if (!isEligible(set)) return out;
 
-    var bw = bodyweightFor(session);
-    var m = metricsFor(set, bw);
+    var m = metricsFor(set);
     var prior = priorValuesBeforeSet(set, session);
     var k;
 
