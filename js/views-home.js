@@ -287,21 +287,28 @@
     );
   }
 
-  function renderCycleSessionHome(program, session, unit) {
+  function renderCycleSessionHome(program, session, unit, allSessions) {
+    var total = (allSessions && allSessions.length) || (session && session.total) || 8;
     if (!session) {
+      var queued =
+        allSessions && allSessions.length
+          ? "All " + allSessions.length + " sessions logged"
+          : "The squat cycle could not be resolved for this program.";
       return (
         renderLoadHero({
           num: null,
           unit: unit,
           eyebrow: program.name || "Squat cycle",
-          lift: "Schedule unavailable",
-          meta: "Open Programs to check the cycle",
+          lift: allSessions && allSessions.length ? "Cycle complete" : "Sequence unavailable",
+          meta: queued,
           ctaLabel: "Open Programs",
           ctaAction: "goto-program",
         }) +
         renderEmptyHint(
-          "No session queued",
-          "The squat schedule could not be resolved for this program."
+          allSessions && allSessions.length ? "Peak block finished" : "No session queued",
+          allSessions && allSessions.length
+            ? "Open Programs to retarget the 1RM or start a new squat cycle."
+            : "Open Programs to check the squat cycle, then return here."
         )
       );
     }
@@ -328,7 +335,7 @@
         unit: unit,
         eyebrow: "Next load",
         lift: "Squat",
-        meta: (session.name || "Session") + (session.dateISO ? " · " + session.dateISO : ""),
+        meta: session.name || "Session " + (session.index || 1) + " of " + total,
         ctaLabel: "Start workout",
       }) +
       renderDayCard("Session plan", program.name || "Squat cycle", rows, "View")
@@ -665,7 +672,7 @@
           unit: unit,
           eyebrow: "Next load",
           lift: "Loading squat…",
-          meta: "Fetching schedule",
+          meta: "Fetching next session",
           ctaLabel: "Start workout",
         })
       );
@@ -673,8 +680,9 @@
         .loadSquatCycleScheme()
         .then(function (scheme) {
           if (!root.isConnected) return;
+          var sessions = SL.store.expandPercentCycle(program, scheme);
           var session = SL.store.nextCycleSession(program, scheme);
-          finish(renderCycleSessionHome(program, session, unit));
+          finish(renderCycleSessionHome(program, session, unit, sessions));
         })
         .catch(function () {
           if (!root.isConnected) return;
@@ -683,13 +691,13 @@
               num: null,
               unit: unit,
               eyebrow: "Squat cycle",
-              lift: "Could not load schedule",
+              lift: "Could not load cycle",
               meta: "Check the program or try again",
               ctaLabel: "Open Programs",
               ctaAction: "goto-program",
             }) +
               renderEmptyHint(
-                "Schedule failed",
+                "Cycle failed",
                 "Open Programs to fix the squat cycle, then return here."
               )
           );

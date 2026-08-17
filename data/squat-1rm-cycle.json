@@ -1,6 +1,6 @@
 {
   "id": "squat-1rm-4w",
-  "name": "Squat 1RM Peak (4 weeks)",
+  "name": "Squat 1RM Peak (8 sessions)",
   "exerciseId": "squat",
   "weeks": [
     {
@@ -60,7 +60,7 @@
           "day": 2,
           "name": "Day 2",
           "sets": [
-            { "sets": 1, "reps": 1, "pct": 1.0 },
+            { "sets": 1, "reps": 1, "pct": 0.95 },
             { "sets": 2, "reps": 5, "pct": 0.8 },
             { "sets": 1, "reps": 5, "pct": 0.7 }
           ]

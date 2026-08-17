@@ -300,9 +300,8 @@
   }
 
   /**
-   * Fallback session date when no program schedule applies.
-   * Prefer history calendar selection, then today. Do not read #log-date here —
-   * that can re-apply "today" onto a freshly loaded scheduled program day.
+   * Fallback session date. Prefer the in-progress draft, then a History calendar
+   * selection, then today. Squat cycle sessions are a sequence, not calendar weeks.
    */
   function resolveSessionDateISO() {
     if (draft) {
@@ -322,7 +321,6 @@
     var bwEl = root.querySelector("#log-bw");
     var noteEl = root.querySelector("#log-session-note");
     // Only pull date from the form when this paint still belongs to the same draft.
-    // Otherwise a stale #log-date (often "today") overwrites the program's defined day.
     if (dateEl && opts.allowDate !== false) {
       var iso = normalizeDateISO(dateEl.value);
       if (iso) draft.dateISO = iso;
@@ -764,8 +762,7 @@
     }
     return {
       id: uid(),
-      // Always the schedule day from startDate + week/day offset — never "today".
-      dateISO: normalizeDateISO(session && session.dateISO) || todayISO(),
+      dateISO: todayISO(),
       bodyweightKg: s.bodyweightKg,
       programId: program ? program.id : null,
       dayId: session ? session.id : null,
@@ -905,9 +902,9 @@
           .loadSquatCycleScheme()
           .then(function (scheme) {
             var session = SL.store.nextCycleSession(program, scheme);
-            var scheduled = normalizeDateISO(session && session.dateISO);
-            // Resume an in-progress draft for the same cycle day, but always
-            // apply the schedule date (never leave a leftover "today").
+            var optDate = opts && normalizeDateISO(opts.dateISO);
+            // Resume an in-progress draft for the same cycle session.
+            // Date is when you train (today, or a History calendar pick), not a week grid.
             if (
               draft &&
               session &&
@@ -916,16 +913,18 @@
               draft.sets &&
               draft.sets.length
             ) {
-              if (scheduled) draft.dateISO = scheduled;
+              if (optDate) draft.dateISO = optDate;
+              else if (!normalizeDateISO(draft.dateISO)) draft.dateISO = todayISO();
               draft.dayName = session.name || draft.dayName;
               draft.week = session.week;
               draft.dayNum = session.day;
               draft.dayId = session.id;
               draft.programId = program.id;
+            } else if (session) {
+              draft = draftFromCycleSession(program, session);
+              if (optDate) draft.dateISO = optDate;
             } else {
-              draft = session
-                ? draftFromCycleSession(program, session)
-                : emptyDraft();
+              draft = emptyDraft();
             }
             if (done) done(draft);
             else if (typeof SL.refresh === "function") SL.refresh();
@@ -2115,8 +2114,7 @@
 
   function paintLog(root) {
     ensureOverlay();
-    // Preserve in-form edits only when re-painting the same draft. A new program
-    // draft must keep its scheduled dateISO, not a stale #log-date ("today").
+    // Preserve in-form edits only when re-painting the same draft.
     if (
       draft &&
       root &&
@@ -2319,18 +2317,14 @@
       var optDate = normalizeDateISO(opts.dateISO);
       if (optDate) {
         calSelectedISO = optDate;
-        // Program-schedule starts own the DATE field; don't stamp history over them.
-        if (!(opts.startFromProgram || SL.pendingStart)) {
-          if (!draft) draft = emptyDraft();
-          draft.dateISO = optDate;
-        }
+        if (!draft) draft = emptyDraft();
+        draft.dateISO = optDate;
       }
     }
     var program = SL.store.getActiveProgram();
     var starting =
       SL.pendingStart || (opts && opts.startFromProgram);
-    // Load (or refresh) the squat schedule day so DATE is the defined program
-    // day, not a leftover "today" from a prior empty draft / stale #log-date.
+    // Load the next squat cycle session in order (not a calendar week).
     if (starting && program && program.kind === "percent_cycle") {
       root.innerHTML = '<div class="card"><p class="muted">Loading squat session…</p></div>';
       paintedDraftId = null;

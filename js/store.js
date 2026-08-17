@@ -8,7 +8,7 @@
   var BACKUP_KEY = "streetlifting-v1-backup";
   var SCHEMA_VERSION = 2;
   var EXERCISES_URL = "data/exercises.json";
-  var SQUAT_CYCLE_URL = "data/squat-1rm-cycle.json";
+  var SQUAT_CYCLE_URL = "data/squat-1rm-cycle.json?v=2";
   var PULLUP_WAVE_URL = "data/pullup-wave-cycle.json";
   var DIP_WAVE_URL = "data/dip-wave-cycle.json";
 
@@ -1004,47 +1004,77 @@
     };
   }
 
+  function flattenCycleSlots(scheme) {
+    var slots = [];
+    if (!scheme) return slots;
+    if (Array.isArray(scheme.sessions) && scheme.sessions.length) {
+      for (var i = 0; i < scheme.sessions.length; i++) {
+        var sess = scheme.sessions[i] || {};
+        slots.push({
+          id: sess.id || "s" + (i + 1),
+          week: sess.week != null ? sess.week : null,
+          day: sess.day != null ? sess.day : i + 1,
+          name: sess.name || null,
+          sets: sess.sets || [],
+        });
+      }
+      return slots;
+    }
+    var weeks = scheme.weeks || [];
+    for (var w = 0; w < weeks.length; w++) {
+      var week = weeks[w] || {};
+      var weekNum = week.week != null ? week.week : w + 1;
+      var days = week.days || [];
+      for (var d = 0; d < days.length; d++) {
+        var day = days[d] || {};
+        var dayNum = day.day != null ? day.day : d + 1;
+        slots.push({
+          id: "w" + weekNum + "d" + dayNum,
+          week: weekNum,
+          day: dayNum,
+          name: day.name || null,
+          sets: day.sets || [],
+        });
+      }
+    }
+    return slots;
+  }
+
   function expandPercentCycle(program, scheme) {
     if (!program || !scheme) return [];
     var target = Number(program.target1rmKg);
     if (!isFinite(target) || target <= 0) return [];
-    var start = program.startDateISO || todayISO();
     var exId = program.exerciseId || scheme.exerciseId || "squat";
+    var slots = flattenCycleSlots(scheme);
+    var total = slots.length;
     var out = [];
-    var weeks = scheme.weeks || [];
-    for (var w = 0; w < weeks.length; w++) {
-      var week = weeks[w];
-      var weekNum = week.week != null ? week.week : w + 1;
-      var days = week.days || [];
-      for (var d = 0; d < days.length; d++) {
-        var day = days[d];
-        var dayNum = day.day != null ? day.day : d + 1;
-        var offset = (weekNum - 1) * 7 + (dayNum === 1 ? 0 : 3);
-        var prescriptions = day.sets || [];
-        var exercises = [];
-        for (var s = 0; s < prescriptions.length; s++) {
-          exercises.push(expandSetPrescription(exId, prescriptions[s], target));
-        }
-        var sessionKey = "w" + weekNum + "d" + dayNum;
-        out.push({
-          id: sessionKey,
-          week: weekNum,
-          day: dayNum,
-          name: "Week " + weekNum + " · " + (day.name || "Day " + dayNum),
-          dateISO: addDaysISO(start, offset),
-          exerciseId: exId,
-          exercises: exercises,
-        });
+    for (var i = 0; i < slots.length; i++) {
+      var slot = slots[i];
+      var prescriptions = slot.sets || [];
+      var exercises = [];
+      for (var s = 0; s < prescriptions.length; s++) {
+        exercises.push(expandSetPrescription(exId, prescriptions[s], target));
       }
+      var index = i + 1;
+      out.push({
+        id: slot.id,
+        week: slot.week,
+        day: slot.day,
+        index: index,
+        total: total,
+        name: "Session " + index + " of " + total,
+        dateISO: null,
+        exerciseId: exId,
+        exercises: exercises,
+      });
     }
     return out;
   }
 
-  function nextCycleSession(program, scheme) {
-    var sessions = expandPercentCycle(program, scheme);
-    if (!sessions.length) return null;
-    var logged = listSessions() || [];
+  function percentCycleLoggedKeys(program) {
     var done = {};
+    if (!program) return done;
+    var logged = listSessions() || [];
     for (var i = 0; i < logged.length; i++) {
       var sess = logged[i];
       if (!sess || sess.programId !== program.id) continue;
@@ -1053,15 +1083,17 @@
         done["w" + sess.week + "d" + sess.day] = true;
       }
     }
-    var today = todayISO();
-    var upcoming = null;
+    return done;
+  }
+
+  function nextCycleSession(program, scheme) {
+    var sessions = expandPercentCycle(program, scheme);
+    if (!sessions.length) return null;
+    var done = percentCycleLoggedKeys(program);
     for (var j = 0; j < sessions.length; j++) {
-      var s = sessions[j];
-      if (done[s.id]) continue;
-      if (s.dateISO <= today) return s;
-      if (!upcoming) upcoming = s;
+      if (!done[sessions[j].id]) return sessions[j];
     }
-    return upcoming || sessions[sessions.length - 1];
+    return null;
   }
 
   function loadPullupWaveScheme() {
@@ -1362,6 +1394,7 @@
     roundLoadKg: roundLoadKg,
     loadSquatCycleScheme: loadSquatCycleScheme,
     expandPercentCycle: expandPercentCycle,
+    percentCycleLoggedKeys: percentCycleLoggedKeys,
     nextCycleSession: nextCycleSession,
     isRepWave: isRepWave,
     waveLiftLabel: waveLiftLabel,

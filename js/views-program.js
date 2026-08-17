@@ -160,7 +160,7 @@
   }
 
   function programKindLabel(p) {
-    if (p.kind === "percent_cycle") return "4-week % cycle";
+    if (p.kind === "percent_cycle") return "8-session % cycle";
     if (p.kind === "pullup_wave") return "Pull-up wave";
     if (p.kind === "dip_wave") return "Dip wave";
     var n = (p.days && p.days.length) || 0;
@@ -382,9 +382,9 @@
     }
     html += '<hr class="weld" />';
     html +=
-      '<p class="muted" style="margin:0 0 12px">4-week squat peaking cycle. Enter your target 1RM; every session load comes from %.</p>';
+      '<p class="muted" style="margin:0 0 12px">8 squat sessions in order from your target 1RM. Log them whenever you train — not locked to calendar weeks.</p>';
     html +=
-      '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (4 weeks)</button>';
+      '<button type="button" class="btn block" id="prog-squat-cycle">Squat 1RM cycle (8 sessions)</button>';
     html += '<hr class="weld" />';
     html +=
       '<p class="muted" style="margin:0 0 12px">Wave programs: start weight for the first micro (3×10). Advance +2.5 kg or drop reps (10→6→3). Intensive 3 sets / Volume 6 sets.</p>';
@@ -782,17 +782,13 @@
       '<button type="button" class="btn sm secondary" id="squat-cancel" style="margin-bottom:12px">Back to programs</button>';
     html += "<h2>Squat 1RM cycle</h2>";
     html +=
-      '<p class="muted" style="margin-bottom:14px">Target one-rep max for the next four weeks. Every session load is scheduled from that goal.</p>';
+      '<p class="muted" style="margin-bottom:14px">Target one-rep max. Loads are % of that number. The 8 sessions run in order — train them whenever you squat, not on a week calendar.</p>';
     html +=
       '<label class="field"><span class="lbl">Target 1RM (' +
       esc(unit) +
       ')</span><input type="number" id="squat-target" min="1" step="0.5" inputmode="decimal" placeholder="e.g. 125" /></label>';
-    html +=
-      '<label class="field"><span class="lbl">Start date (Week 1 Day 1)</span><input type="date" id="squat-start" value="' +
-      esc(todayLocalISO()) +
-      '" /></label>';
     html += '<div class="stack" style="margin-top:8px">';
-    html += '<button type="button" class="btn block" id="squat-create">Create &amp; schedule</button>';
+    html += '<button type="button" class="btn block" id="squat-create">Create cycle</button>';
     html += "</div></div>";
     root.innerHTML = html;
 
@@ -803,13 +799,11 @@
 
     root.querySelector("#squat-create").addEventListener("click", function () {
       var targetInput = root.querySelector("#squat-target");
-      var startInput = root.querySelector("#squat-start");
       var targetKg = displayToKg(targetInput && targetInput.value, unit);
       if (!targetKg) {
         if (targetInput) targetInput.focus();
         return;
       }
-      var startDate = (startInput && startInput.value) || todayLocalISO();
       SL.store
         .loadSquatCycleScheme()
         .then(function (scheme) {
@@ -820,7 +814,7 @@
             kind: "percent_cycle",
             exerciseId: "squat",
             target1rmKg: Math.round(targetKg * 100) / 100,
-            startDateISO: startDate,
+            startDateISO: todayLocalISO(),
             schemeId: (scheme && scheme.id) || "squat-1rm-4w",
             days: [],
           };
@@ -855,6 +849,18 @@
     var paint = function (scheme) {
       state.squatScheme = scheme;
       var sessions = SL.store.expandPercentCycle(program, scheme);
+      var done =
+        typeof SL.store.percentCycleLoggedKeys === "function"
+          ? SL.store.percentCycleLoggedKeys(program)
+          : {};
+      var next =
+        typeof SL.store.nextCycleSession === "function"
+          ? SL.store.nextCycleSession(program, scheme)
+          : null;
+      var doneCount = 0;
+      for (var d = 0; d < sessions.length; d++) {
+        if (done[sessions[d].id]) doneCount += 1;
+      }
       var html = '<div class="card">';
       html +=
         '<button type="button" class="btn sm secondary" id="squat-back-list" style="margin-bottom:12px">Back to programs</button>';
@@ -866,14 +872,16 @@
           '<p class="muted small" style="margin:8px 0 0">Not on Home yet — set active to use this cycle.</p>';
       } else {
         html +=
-          '<p class="muted small" style="margin:8px 0 0">Active — drives Home and Start workout.</p>';
+          '<p class="muted small" style="margin:8px 0 0">Active — Home starts the next unfinished session.</p>';
       }
       html +=
         '<p class="muted" style="margin:12px 0">Target 1RM: <strong>' +
         esc(kgToDisplay(program.target1rmKg, unit) + " " + unit) +
-        "</strong> · starts " +
-        esc(program.startDateISO || "") +
-        "</p>";
+        "</strong> · " +
+        doneCount +
+        " of " +
+        sessions.length +
+        " logged</p>";
       html +=
         '<label class="field"><span class="lbl">Update target 1RM (' +
         esc(unit) +
@@ -881,27 +889,23 @@
         esc(kgToDisplay(program.target1rmKg, unit)) +
         '" /></label>';
       html +=
-        '<label class="field"><span class="lbl">Start date</span><input type="date" id="squat-restartdate" value="' +
-        esc(program.startDateISO || todayLocalISO()) +
-        '" /></label>';
-      html +=
-        '<button type="button" class="btn secondary block" id="squat-apply" style="margin-bottom:14px">Update schedule</button>';
+        '<button type="button" class="btn secondary block" id="squat-apply" style="margin-bottom:14px">Update loads</button>';
+      html += "</div>";
 
-      var week = null;
+      html += '<div class="card" style="margin-top:10px">';
+      html += "<h3>Sessions in order</h3>";
+      html +=
+        '<p class="muted small" style="margin:0 0 10px">Not a week calendar. Log session 1, then 2, and so on, on whatever days you squat.</p>';
       for (var i = 0; i < sessions.length; i++) {
         var sess = sessions[i];
-        if (week !== sess.week) {
-          if (week != null) html += "</div>";
-          week = sess.week;
-          html += '<div class="card" style="margin-top:10px"><h3>Week ' + esc(sess.week) + "</h3>";
-        }
+        var logged = !!done[sess.id];
+        var isNext = next && next.id === sess.id;
+        var status = logged ? "Logged" : isNext ? "Next" : "Queued";
         html += '<div class="session-card" style="margin-top:8px;cursor:default">';
-        html +=
-          '<div class="head"><span class="date">' +
-          esc(sess.name) +
-          '</span><span class="muted small">' +
-          esc(sess.dateISO) +
-          "</span></div>";
+        html += '<div class="head"><span class="date">' + esc(sess.name);
+        if (logged) html += ' <span class="badge green">Logged</span>';
+        else if (isNext) html += ' <span class="badge">Next</span>';
+        html += '</span><span class="muted small">' + esc(status) + "</span></div>";
         for (var e = 0; e < sess.exercises.length; e++) {
           var ex = sess.exercises[e];
           html +=
@@ -913,13 +917,12 @@
         }
         html += "</div>";
       }
-      if (week != null) html += "</div>";
+      html += "</div>";
 
       if (!program.active) {
         html +=
           '<button type="button" class="btn block" id="squat-activate" style="margin-top:14px">Set active</button>';
       }
-      html += "</div>";
       root.innerHTML = html;
 
       root.querySelector("#squat-back-list").addEventListener("click", function () {
@@ -936,10 +939,8 @@
       }
       root.querySelector("#squat-apply").addEventListener("click", function () {
         var t = displayToKg(root.querySelector("#squat-retarget").value, unit);
-        var sd = root.querySelector("#squat-restartdate").value || program.startDateISO;
         if (!t) return;
         program.target1rmKg = Math.round(t * 100) / 100;
-        program.startDateISO = sd;
         program.name = "Squat 1RM Peak — " + kgToDisplay(t, unit) + " " + unit;
         SL.store.upsertProgram(program);
         refresh();
@@ -949,7 +950,7 @@
     if (state.squatScheme) {
       paint(state.squatScheme);
     } else {
-      root.innerHTML = '<div class="card"><p class="muted">Loading schedule…</p></div>';
+      root.innerHTML = '<div class="card"><p class="muted">Loading sessions…</p></div>';
       SL.store
         .loadSquatCycleScheme()
         .then(paint)
@@ -1402,7 +1403,7 @@
 
   function title() {
     if (state.mode === "squat-cycle") return "Squat 1RM cycle";
-    if (state.mode === "squat-schedule") return "Squat schedule";
+    if (state.mode === "squat-schedule") return "Squat sessions";
     if (state.mode === "wave-create" || state.mode === "pullup-wave") {
       return waveCreateConfig(state.waveKind || "pullup_wave").title;
     }
