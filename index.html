@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
-  <!-- Pre-JS splash matches :root light tokens; theme.js swaps to #141414 in dark -->
-  <meta name="theme-color" content="#eceff4" />
+  <!-- Pre-JS splash matches :root cream; theme.js swaps to #141414 in dark -->
+  <meta name="theme-color" content="#f6f4ef" />
   <meta name="description" content="Weighted calisthenics tracker — programs, session log, rest timer, and plate loads. Chalk on steel." />
   <meta name="application-name" content="Streetlifting" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="dong-ui/theme.css?v=9" />
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="dong-ui/theme.css?v=10" />
+  <link rel="stylesheet" href="styles.css?v=10" />
   <script src="dong-ui/theme.js"></script>
   <link rel="manifest" href="manifest.webmanifest" />
 </head>
@@ -44,44 +44,44 @@
     <main id="view-root" tabindex="-1" aria-labelledby="topbar-title"></main>
 
     <nav id="tabbar" aria-label="Primary">
-      <button type="button" data-tab="home" class="tab active" aria-label="Home" aria-controls="view-root">
-        <span class="tab-icon" aria-hidden="true">&#8962;</span><span class="tab-label">Home</span>
+      <button type="button" data-tab="home" class="tab nav-tab active" aria-label="Home" aria-controls="view-root">
+        <span class="tab-icon nav-icon" aria-hidden="true">&#8962;</span><span class="tab-label">Home</span>
       </button>
-      <button type="button" data-tab="history" class="tab" aria-label="History" aria-controls="view-root">
-        <span class="tab-icon" aria-hidden="true">&#9776;</span><span class="tab-label">Hist</span>
+      <button type="button" data-tab="history" class="tab nav-tab" aria-label="History" aria-controls="view-root">
+        <span class="tab-icon nav-icon" aria-hidden="true">&#9776;</span><span class="tab-label">Hist</span>
       </button>
-      <button type="button" data-tab="analytics" class="tab" aria-label="Analytics" aria-controls="view-root">
-        <span class="tab-icon" aria-hidden="true">&#9636;</span><span class="tab-label">Stats</span>
+      <button type="button" data-tab="analytics" class="tab nav-tab" aria-label="Analytics" aria-controls="view-root">
+        <span class="tab-icon nav-icon" aria-hidden="true">&#9636;</span><span class="tab-label">Stats</span>
       </button>
-      <button type="button" data-tab="program" class="tab" aria-label="Program" aria-controls="view-root">
-        <span class="tab-icon" aria-hidden="true">&#9635;</span><span class="tab-label">Prog</span>
+      <button type="button" data-tab="program" class="tab nav-tab" aria-label="Program" aria-controls="view-root">
+        <span class="tab-icon nav-icon" aria-hidden="true">&#9635;</span><span class="tab-label">Prog</span>
       </button>
-      <button type="button" data-tab="exercises" class="tab" aria-label="Exercises" aria-controls="view-root">
-        <span class="tab-icon" aria-hidden="true">&#9733;</span><span class="tab-label">Ex</span>
+      <button type="button" data-tab="exercises" class="tab nav-tab" aria-label="Exercises" aria-controls="view-root">
+        <span class="tab-icon nav-icon" aria-hidden="true">&#9733;</span><span class="tab-label">Ex</span>
       </button>
-      <button type="button" data-tab="settings" class="tab" aria-label="Settings" aria-controls="view-root">
-        <span class="tab-icon" aria-hidden="true">&#9881;</span><span class="tab-label">Set</span>
+      <button type="button" data-tab="settings" class="tab nav-tab" aria-label="Settings" aria-controls="view-root">
+        <span class="tab-icon nav-icon" aria-hidden="true">&#9881;</span><span class="tab-label">Set</span>
       </button>
     </nav>
   </div>
 
   <noscript>
-    <p style="margin:24px 16px;color:#e6edf3;font:500 1rem/1.4 'Encode Sans',system-ui,sans-serif;max-width:640px">
+    <p style="margin:24px 16px;color:#141414;font:500 1rem/1.4 'Encode Sans',system-ui,sans-serif;max-width:640px">
       Streetlifting needs JavaScript to run. Enable it, then reload.
     </p>
   </noscript>
 
-  <script src="js/store.js?v=9"></script>
-  <script src="js/prs.js?v=9"></script>
-  <script src="js/csv.js?v=9"></script>
-  <script src="js/timer.js?v=9"></script>
-  <script src="js/views-home.js?v=9"></script>
-  <script src="js/views-exercises.js?v=9"></script>
-  <script src="js/views-program.js?v=9"></script>
-  <script src="js/views-log.js?v=9"></script>
-  <script src="js/views-summary.js?v=9"></script>
-  <script src="js/views-analytics.js?v=9"></script>
-  <script src="js/views-settings.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="js/store.js?v=10"></script>
+  <script src="js/prs.js?v=10"></script>
+  <script src="js/csv.js?v=10"></script>
+  <script src="js/timer.js?v=10"></script>
+  <script src="js/views-home.js?v=10"></script>
+  <script src="js/views-exercises.js?v=10"></script>
+  <script src="js/views-program.js?v=10"></script>
+  <script src="js/views-log.js?v=10"></script>
+  <script src="js/views-summary.js?v=10"></script>
+  <script src="js/views-analytics.js?v=10"></script>
+  <script src="js/views-settings.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

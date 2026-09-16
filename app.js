@@ -27,6 +27,7 @@
   function setActiveTabButton(tab) {
     document.querySelectorAll("#tabbar [data-tab]").forEach((btn) => {
       const on = btn.getAttribute("data-tab") === tab;
+      btn.classList.add("tab", "nav-tab");
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
       if (on) btn.setAttribute("aria-current", "page");

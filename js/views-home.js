@@ -114,7 +114,7 @@
     if (!programs || programs.length < 2) return "";
     var html =
       '<section class="card" aria-label="Choose program">' +
-      '<h2 class="muted">Program</h2>' +
+      renderSecondaryHeading("Choose program", "Program") +
       '<p class="muted small" style="margin:0 0 10px">Home and Start workout use the active one.</p>';
     for (var i = 0; i < programs.length; i++) {
       var p = programs[i];
@@ -135,65 +135,134 @@
     return html;
   }
 
+  function collectPrStats(unit) {
+    var stats = [];
+    for (var i = 0; i < PR_LIFTS.length; i++) {
+      var lift = PR_LIFTS[i];
+      var best = SL.store.bestSet(lift.id);
+      if (!best) continue;
+      stats.push({
+        value:
+          fmtWeight(best.loadKg, unit) +
+          " × " +
+          (best.reps != null ? best.reps : "?"),
+        label: lift.label,
+      });
+    }
+    return stats;
+  }
+
+  function progressBar(pct, label) {
+    var n = Number(pct);
+    if (!isFinite(n)) return "";
+    if (n < 0) n = 0;
+    if (n > 100) n = 100;
+    var rounded = Math.round(n);
+    return (
+      '<div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' +
+      rounded +
+      '" aria-label="' +
+      esc(label || rounded + "%") +
+      '"><span class="progress-fill" style="width:' +
+      n +
+      '%"></span></div>'
+    );
+  }
+
   /**
-   * Signature artifact: oversized belt load + lift + one primary CTA.
-   * Markup matches DESIGN.md classes: .load-hero .eyebrow .num .unit .lift .meta .cta
+   * Wiki Insights dashboard language: learning-hero + primary-action.
+   * Same start-session actions as before (data-action).
    */
   function renderLoadHero(opts) {
+    opts = opts || {};
     var num = opts.num;
     var unit = opts.unit || "kg";
     var lift = opts.lift || "";
     var meta = opts.meta || "";
-    var eyebrow = opts.eyebrow || "Next load";
+    var eyebrow = opts.eyebrow || "Today / Streetlifting";
+    var title = opts.title || lift || "Rest day";
     var ctaLabel = opts.ctaLabel || "Start workout";
     var ctaAction = opts.ctaAction || "start-workout";
     var empty = !num || num === "—";
     var displayNum = formatBeltNum(empty ? "—" : num);
+    var stats = opts.stats || collectPrStats(unit);
 
+    var xp = empty ? "" : displayNum + " " + unit;
     var ariaLoad = empty
-      ? eyebrow + (lift ? ": " + lift : "")
-      : displayNum + " " + unit + (lift ? " " + lift : "");
+      ? eyebrow + ": " + title
+      : displayNum + " " + unit + (lift ? " " + lift : "") + " — " + title;
     var ctaAria = empty
-      ? ctaLabel
+      ? ctaLabel + " — " + title
       : ctaLabel + " — " + displayNum + " " + unit + (lift ? " " + lift : "");
+    var ctaStrong = opts.ctaStrong;
+    if (!ctaStrong) {
+      if (!empty && lift) ctaStrong = displayNum + " " + unit + " · " + lift;
+      else if (lift) ctaStrong = lift;
+      else ctaStrong = title;
+    }
 
     var html =
-      '<section class="load-hero' +
-      (empty ? " empty" : "") +
-      '" aria-label="' +
+      '<section class="learning-hero" aria-labelledby="home-hero-title" aria-label="' +
       esc(ariaLoad) +
       '">' +
-      '<p class="eyebrow" id="home-load-eyebrow">' +
+      '<div class="hero-topline">' +
+      '<span class="eyebrow" id="home-load-eyebrow">' +
       esc(eyebrow) +
-      "</p>" +
-      '<p class="num" aria-hidden="true">' +
-      esc(displayNum) +
-      "</p>" +
-      '<p class="unit" aria-hidden="true">' +
-      esc(unit) +
-      "</p>";
-
-    if (lift) {
-      html += '<h1 class="lift">' + esc(lift) + "</h1>";
+      "</span>";
+    if (xp) {
+      html += '<span class="hero-xp">' + esc(xp) + "</span>";
     }
-    if (meta) {
-      html += '<p class="session-name meta">' + esc(meta) + "</p>";
-    }
-
     html +=
-      '<div class="cta home-cta">' +
-      '<button type="button" class="btn primary block" data-action="' +
+      "</div>" +
+      '<h2 id="home-hero-title">' +
+      esc(title) +
+      "</h2>";
+    if (meta) {
+      html += '<p class="hero-meta">' + esc(meta) + "</p>";
+    }
+    if (opts.progressPct != null) {
+      html += progressBar(opts.progressPct, opts.progressLabel);
+    }
+    if (stats && stats.length) {
+      html +=
+        '<div class="status-stats" data-count="' +
+        stats.length +
+        '">';
+      for (var i = 0; i < stats.length; i++) {
+        html +=
+          "<div><strong>" +
+          esc(stats[i].value) +
+          "</strong><span>" +
+          esc(stats[i].label) +
+          "</span></div>";
+      }
+      html += "</div>";
+    }
+    html +=
+      "</section>" +
+      '<button type="button" class="primary-action" data-action="' +
       esc(ctaAction) +
       '" aria-label="' +
       esc(ctaAria) +
-      '">' +
+      '"><span><small>' +
       esc(ctaLabel) +
-      "</button></div></section>";
+      "</small><strong>" +
+      esc(ctaStrong) +
+      '</strong></span><span class="primary-arrow" aria-hidden="true">→</span></button>';
     return html;
   }
 
-  function renderSecondaryHeading(text) {
-    return '<h2 class="muted">' + esc(text) + "</h2>";
+  function renderSecondaryHeading(text, eyebrow) {
+    return (
+      '<div class="section-heading">' +
+      "<div>" +
+      (eyebrow
+        ? '<span class="eyebrow">' + esc(eyebrow) + "</span>"
+        : "") +
+      "<h2>" +
+      esc(text) +
+      "</h2></div></div>"
+    );
   }
 
   function renderExerciseRows(rows) {
@@ -222,7 +291,7 @@
       '<section class="card" aria-label="' +
       esc(title) +
       '">' +
-      renderSecondaryHeading(title) +
+      renderSecondaryHeading(title, "Plan") +
       '<div class="spread" style="margin-bottom:10px">' +
       '<div><span class="muted small">' +
       esc(programName) +
@@ -257,7 +326,8 @@
       renderLoadHero({
         num: null,
         unit: "kg",
-        eyebrow: "Belt load",
+        eyebrow: "Today / Streetlifting",
+        title: "Rest day",
         lift: "No program yet",
         meta: "Add days and loads — your next weight shows here",
         ctaLabel: "Create a program",
@@ -298,8 +368,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: program.name || "Squat cycle",
-          lift: allSessions && allSessions.length ? "Cycle complete" : "Sequence unavailable",
+          eyebrow: "Today / Streetlifting",
+          title: allSessions && allSessions.length ? "Cycle complete" : "Rest day",
+          lift: program.name || "Squat cycle",
           meta: queued,
           ctaLabel: "Open Programs",
           ctaAction: "goto-program",
@@ -329,13 +400,19 @@
       });
     }
 
+    var sessionLabel =
+      session.name || "Session " + (session.index || 1) + " of " + total;
+    var sessionIdx = session.index || 1;
     return (
       renderLoadHero({
         num: num,
         unit: unit,
-        eyebrow: "Next load",
+        eyebrow: "Today / Streetlifting",
+        title: sessionLabel,
         lift: "Squat",
-        meta: session.name || "Session " + (session.index || 1) + " of " + total,
+        meta: program.name || "Squat cycle",
+        progressPct: total ? (sessionIdx / total) * 100 : null,
+        progressLabel: "Session " + sessionIdx + " of " + total,
         ctaLabel: "Start workout",
       }) +
       renderDayCard("Session plan", program.name || "Squat cycle", rows, "View")
@@ -355,8 +432,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: program.name || "Pull-up wave",
-          lift: "Wave unavailable",
+          eyebrow: "Today / Streetlifting",
+          title: "Rest day",
+          lift: program.name || "Pull-up wave",
           meta: "Open Programs to check the wave",
           ctaLabel: "Open Programs",
           ctaAction: "goto-program",
@@ -386,7 +464,7 @@
     var dayPick =
       '<hr class="weld" aria-hidden="true" />' +
       '<section class="card" aria-label="Day type">' +
-      renderSecondaryHeading("Day type") +
+      renderSecondaryHeading("Day type", "Wave") +
       '<p class="muted small" style="margin:0 0 10px">Choose Intensive or Volume, then start. Advance load or end the micro/cycle when ready.</p>' +
       '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px" role="group" aria-label="Wave day">' +
       '<button type="button" class="btn' +
@@ -415,9 +493,12 @@
       renderLoadHero({
         num: num,
         unit: unit,
-        eyebrow: "Next load",
+        eyebrow: "Today / Streetlifting",
+        title:
+          session.name ||
+          (selected === "volume" ? "Volume day" : "Intensive day"),
         lift: liftName,
-        meta: session.name || "Wave session",
+        meta: program.name || liftName + " wave",
         ctaLabel: "Start workout",
         ctaAction: "start-wave",
       }) +
@@ -439,8 +520,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: program.name || "Program",
-          lift: "No days yet",
+          eyebrow: "Today / Streetlifting",
+          title: "Rest day",
+          lift: program.name || "Program",
           meta: "Add a day with lifts and starting loads",
           ctaLabel: "Edit program",
           ctaAction: "goto-program",
@@ -481,21 +563,30 @@
       });
     }
 
+    var days = program.days || [];
+    var dayIdx = -1;
+    for (var d = 0; d < days.length; d++) {
+      if (days[d] && days[d].id === day.id) {
+        dayIdx = d;
+        break;
+      }
+    }
     var heroOpts = {
       num: num,
       unit: unit,
-      eyebrow: "Next load",
+      eyebrow: "Today / Streetlifting",
+      title: day.name || "Workout",
       lift: firstName,
-      meta: (day.name || "Day") + " · " + (program.name || "Program"),
+      meta: program.name || "Program",
       ctaLabel: "Start workout",
     };
+    if (days.length > 1 && dayIdx >= 0) {
+      heroOpts.progressPct = ((dayIdx + 1) / days.length) * 100;
+      heroOpts.progressLabel = "Day " + (dayIdx + 1) + " of " + days.length;
+    }
     if (num == null) {
-      heroOpts.eyebrow = "Next lift";
       heroOpts.meta =
-        (day.name || "Day") +
-        " · " +
-        (program.name || "Program") +
-        " — set a starting load in the program";
+        (program.name || "Program") + " — set a starting load in the program";
     }
 
     return (
@@ -509,7 +600,7 @@
     var html =
       '<hr class="weld" aria-hidden="true" />' +
       '<section class="card" aria-label="Competition PRs">' +
-      renderSecondaryHeading("Quick PRs");
+      renderSecondaryHeading("Quick PRs", "Competition");
     var any = false;
     for (var i = 0; i < PR_LIFTS.length; i++) {
       var lift = PR_LIFTS[i];
@@ -670,8 +761,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: "Next load",
-          lift: "Loading squat…",
+          eyebrow: "Today / Streetlifting",
+          title: "Loading squat…",
+          lift: "Squat",
           meta: "Fetching next session",
           ctaLabel: "Start workout",
         })
@@ -690,7 +782,8 @@
             renderLoadHero({
               num: null,
               unit: unit,
-              eyebrow: "Squat cycle",
+              eyebrow: "Today / Streetlifting",
+              title: "Rest day",
               lift: "Could not load cycle",
               meta: "Check the program or try again",
               ctaLabel: "Open Programs",
@@ -712,8 +805,9 @@
         renderLoadHero({
           num: null,
           unit: unit,
-          eyebrow: "Next load",
-          lift: "Loading wave…",
+          eyebrow: "Today / Streetlifting",
+          title: "Loading wave…",
+          lift: waveEyebrow,
           meta: "Fetching intensive / volume",
           ctaLabel: "Start workout",
         })
@@ -759,7 +853,8 @@
             renderLoadHero({
               num: null,
               unit: unit,
-              eyebrow: waveEyebrow + " wave",
+              eyebrow: "Today / Streetlifting",
+              title: "Rest day",
               lift: "Could not load wave",
               meta: "Check the program or try again",
               ctaLabel: "Open Programs",

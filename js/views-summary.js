@@ -299,7 +299,7 @@
     if (volNum == null) volNum = "0";
     return (
       '<section class="summary-hero" aria-label="Workout summary">' +
-      '<p class="summary-hero-date">' +
+      '<p class="summary-hero-date eyebrow">' +
       esc(dateLabel) +
       "</p>" +
       '<p class="summary-hero-duration num" aria-label="Duration ' +
@@ -348,7 +348,7 @@
     if (!hits || !hits.length) return "";
     var html =
       '<section class="summary-prs" aria-label="PRs hit">' +
-      '<h2 class="summary-section-title">PRs hit</h2>' +
+      '<div class="section-heading"><div><span class="eyebrow">This session</span><h2 class="summary-section-title">PRs hit</h2></div></div>' +
       '<ul class="summary-pr-list">';
     var i;
     for (i = 0; i < hits.length; i++) {
@@ -375,7 +375,7 @@
     var per = summary.perExercise || [];
     var html =
       '<section class="summary-exercises" aria-label="Per exercise">' +
-      '<h2 class="summary-section-title">Exercises</h2>';
+      '<div class="section-heading"><div><span class="eyebrow">Breakdown</span><h2 class="summary-section-title">Exercises</h2></div></div>';
     if (!per.length) {
       html += '<p class="muted small">No working sets logged.</p></section>';
       return html;
@@ -408,7 +408,7 @@
     if (!split.length) return "";
     var html =
       '<section class="summary-split" aria-label="Muscle split">' +
-      '<h2 class="summary-section-title">Muscle split</h2>';
+      '<div class="section-heading"><div><span class="eyebrow">Volume</span><h2 class="summary-section-title">Muscle split</h2></div></div>';
     var i;
     for (i = 0; i < split.length; i++) {
       var row = split[i];

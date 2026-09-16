@@ -115,6 +115,17 @@
     );
   }
 
+  function sectionHeading(title, eyebrow) {
+    return (
+      '<div class="section-heading">' +
+      "<div><span class=\"eyebrow\">" +
+      esc(eyebrow || "Analytics") +
+      "</span><h2>" +
+      esc(title) +
+      "</h2></div></div>"
+    );
+  }
+
   function sectionEmpty(title, hint) {
     return (
       '<div class="empty-note">' +
@@ -999,7 +1010,7 @@
 
     var html =
       '<div class="card">' +
-      "<h2>Recent PRs</h2>" +
+      sectionHeading("Recent PRs", "Feed") +
       '<p class="muted small chart-section-hint">Newest first across all exercises</p>' +
       '<div class="pr-feed">';
 
@@ -1039,7 +1050,7 @@
     if (!ids.length) {
       return (
         '<div class="card">' +
-        "<h2>Exercise progress</h2>" +
+        sectionHeading("Exercise progress", "Charts") +
         sectionEmpty(
           "No working sets yet",
           "Complete a non-warmup set to chart progress."
@@ -1075,7 +1086,7 @@
 
     var html =
       '<div class="card">' +
-      "<h2>Exercise progress</h2>" +
+      sectionHeading("Exercise progress", "Charts") +
       '<p class="muted small chart-section-hint">Per-exercise trends · warm-ups excluded</p>' +
       '<label class="field chart-picker-field">' +
       '<span class="lbl">Exercise</span>' +
@@ -1204,7 +1215,7 @@
   function renderPrSection() {
     var html =
       '<div class="card">' +
-      "<h2>Competition PRs</h2>" +
+      sectionHeading("Competition PRs", "Board") +
       '<p class="muted small chart-section-hint">Best belt load · e1RM on added load only</p>';
 
     var any = false;
@@ -1251,7 +1262,7 @@
     var missing = missingCompLifts();
     var html =
       '<div class="card">' +
-      "<h2>Streetlifting total</h2>" +
+      sectionHeading("Streetlifting total", "Meet") +
       '<p class="muted small chart-section-hint">Sum of best added-load e1RM across the four competition lifts</p>';
 
     if (current == null) {
@@ -1318,7 +1329,7 @@
   function renderE1rmSection() {
     var html =
       '<div class="card">' +
-      "<h2>e1RM trends</h2>" +
+      sectionHeading("e1RM trends", "Trends") +
       '<p class="muted small chart-section-hint">Best estimated 1RM each session (added load only)</p>';
 
     var any = false;
@@ -1374,7 +1385,7 @@
   function renderVolumeSection(weeks) {
     var html =
       '<div class="card">' +
-      "<h2>Weekly volume</h2>" +
+      sectionHeading("Weekly volume", "Volume") +
       '<p class="muted small chart-section-hint">Tonnage = belt load × reps</p>';
 
     if (!weeks.length) {
@@ -1439,7 +1450,7 @@
     if (!hints.length) return "";
     var html =
       '<div class="card">' +
-      "<h2>Progression hints</h2>" +
+      sectionHeading("Progression hints", "Coaching") +
       '<p class="muted small chart-section-hint">Double progression — last 2 sessions missed top reps</p>';
 
     hints.forEach(function (h) {
