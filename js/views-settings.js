@@ -311,8 +311,20 @@
     return parts.join(", ");
   }
 
+  function replaceMode() {
+    var box = document.getElementById("import-replace");
+    return !!(box && box.checked);
+  }
+
   function confirmImport(counts) {
     var summary = formatBackupSummary(counts);
+    if (!replaceMode()) {
+      return window.confirm(
+        "Merge this backup into this device?\n\n" +
+          summary +
+          "\n\nWorkouts from both devices are kept. Matching workouts keep the newer copy."
+      );
+    }
     return window.confirm(
       "Replace all data on this device with this backup?\n\n" +
         summary +
@@ -321,14 +333,15 @@
   }
 
   function runImport(raw) {
-    if (!SL.store || typeof SL.store.importJson !== "function") {
+    var fn = replaceMode() ? "importJson" : "mergeJson";
+    if (!SL.store || typeof SL.store[fn] !== "function") {
       toast("Import unavailable");
       return;
     }
     try {
-      var result = SL.store.importJson(raw);
+      var result = SL.store[fn](raw);
       var counts = (result && result.counts) || backupCounts();
-      toast("Imported " + formatBackupSummary(counts));
+      toast((fn === "mergeJson" ? "Merged — now " : "Imported ") + formatBackupSummary(counts));
       refreshApp();
     } catch (err) {
       toast("Import failed — check JSON");
@@ -760,8 +773,12 @@
         '<span class="lbl">Or paste backup JSON</span>' +
         '<textarea id="import-text" rows="5" placeholder=\'{"version":2,"programs":[],"sessions":[],...}\'></textarea>' +
         "</label>" +
+        '<label class="field data-row">' +
+        '<input id="import-replace" type="checkbox" /> ' +
+        '<span class="lbl">Replace everything instead of merging</span>' +
+        "</label>" +
         '<div class="data-actions">' +
-        '<button type="button" class="btn secondary block" id="import-json">Import backup</button>' +
+        '<button type="button" class="btn secondary block" id="import-json">Import and merge</button>' +
         "</div>" +
         "</div>" +
         '<div class="card">' +

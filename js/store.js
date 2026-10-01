@@ -557,6 +557,7 @@
       return 0;
     });
     var payload = {
+      app: "streetlifting",
       version: SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       settings: cloneJson(s.settings),
@@ -587,6 +588,74 @@
       migrateToV2(parsed);
     }
     state = normalizeLoaded(parsed);
+    save();
+    return {
+      state: state,
+      counts: backupCounts(state),
+    };
+  }
+
+  function stampOf(item) {
+    return (item && (item.endedAt || item.startedAt)) || 0;
+  }
+
+  /** Union by id; on a clash the later-stamped copy wins, ties go to incoming. */
+  function mergeById(mine, theirs) {
+    var out = cloneJson(mine || []);
+    var index = {};
+    out.forEach(function (item, i) {
+      if (item && item.id != null) index[item.id] = i;
+    });
+    (theirs || []).forEach(function (item) {
+      if (!item) return;
+      var i = item.id != null ? index[item.id] : undefined;
+      if (i === undefined) {
+        if (item.id != null) index[item.id] = out.length;
+        out.push(cloneJson(item));
+      } else if (stampOf(item) >= stampOf(out[i])) {
+        out[i] = cloneJson(item);
+      }
+    });
+    return out;
+  }
+
+  /** Pure merge of two normalized stores. Settings stay as on this device. */
+  function mergeStates(local, incoming) {
+    var out = cloneJson(local);
+    out.sessions = mergeById(local.sessions, incoming.sessions);
+    out.programs = mergeById(local.programs, incoming.programs);
+    out.customExercises = mergeById(local.customExercises, incoming.customExercises);
+    out.exerciseSettings = Object.assign(
+      {},
+      local.exerciseSettings || {},
+      cloneJson(incoming.exerciseSettings || {})
+    );
+    return out;
+  }
+
+  function mergeJson(str) {
+    if (str == null) throw new Error("Invalid JSON");
+    var text = String(str).replace(/^\uFEFF/, "").trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      throw new Error("Invalid JSON");
+    }
+    if (parsed && parsed.app && parsed.app !== "streetlifting") {
+      throw new Error("Not a Streetlifting backup");
+    }
+    if (!validateStore(parsed)) throw new Error("Invalid store shape");
+    if (needsMigration(parsed)) migrateToV2(parsed);
+    var incoming = normalizeLoaded(parsed);
+    var local = get();
+    var preKey = STORAGE_KEY + "-pre-import";
+    try {
+      if (localStorage.getItem(preKey) == null) {
+        localStorage.setItem(preKey, JSON.stringify(local));
+      }
+    } catch (e) { /* quota */ }
+    state = mergeStates(local, incoming);
     save();
     return {
       state: state,
@@ -1387,6 +1456,8 @@
     deleteSession: deleteSession,
     exportJson: exportJson,
     importJson: importJson,
+    mergeJson: mergeJson,
+    mergeStates: mergeStates,
     backupCounts: backupCounts,
     e1rm: e1rm,
     bestSet: bestSet,

@@ -103,6 +103,44 @@
     if (typeof onDone === "function") onDone();
   }
 
+  function isAndroid() {
+    try {
+      return /Android/i.test(String(navigator.userAgent || ""));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Open Android Clock with a running rest timer (AlarmClock.SET_TIMER).
+   * No-op off Android. Clock owns the alarm if Chrome is backgrounded.
+   */
+  function openAndroidClock(seconds) {
+    try {
+      if (!isAndroid()) return;
+      var sec = Math.floor(Number(seconds) || 0);
+      if (sec < 1) return;
+      if (sec > 86400) sec = 86400;
+      var fallback = "";
+      try {
+        fallback = encodeURIComponent(String(location.href || ""));
+      } catch (eFb) {
+        fallback = "";
+      }
+      location.href =
+        "intent:#Intent;" +
+        "action=android.intent.action.SET_TIMER;" +
+        "S.android.intent.extra.alarm.MESSAGE=Rest;" +
+        "i.android.intent.extra.alarm.LENGTH=" +
+        sec +
+        ";" +
+        (fallback ? "S.browser_fallback_url=" + fallback + ";" : "") +
+        "end";
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   /**
    * Start (or restart) a countdown. Uses wall-clock end time so background
    * tab throttling does not stretch rest on the gym floor.
@@ -122,6 +160,7 @@
     }
     endAt = Date.now() + remainingSec * 1000;
     emitTick(onTick);
+    openAndroidClock(remainingSec);
 
     intervalId = setInterval(function () {
       var left = Math.ceil((endAt - Date.now()) / 1000);
