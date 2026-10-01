@@ -538,6 +538,31 @@
       });
     }
 
+    function githubSync(mode) {
+      if (!window.GhSync || !SL.store || typeof SL.store.mergeJson !== "function") {
+        toast("GitHub sync unavailable");
+        return;
+      }
+      var getPayload = function () { return JSON.parse(SL.store.exportJson()); };
+      var apply = function (data) { SL.store.mergeJson(JSON.stringify(data)); };
+      var run = mode === "save"
+        ? window.GhSync.save("streetlifting", getPayload, apply)
+        : window.GhSync.load("streetlifting", apply);
+      run.then(
+        function (msg) {
+          toast(msg + " — " + formatBackupSummary(backupCounts()));
+          refreshApp();
+        },
+        function (err) {
+          toast(err.message);
+        }
+      );
+    }
+    var ghSave = root.querySelector("#github-save");
+    var ghLoad = root.querySelector("#github-load");
+    if (ghSave) ghSave.addEventListener("click", function () { githubSync("save"); });
+    if (ghLoad) ghLoad.addEventListener("click", function () { githubSync("load"); });
+
     var importArea = root.querySelector("#import-text");
     var importBtn = root.querySelector("#import-json");
     if (importBtn) {
@@ -763,6 +788,10 @@
         ".</p>" +
         '<div class="data-row data-actions">' +
         '<button type="button" class="btn block" id="export-json">Export backup</button>' +
+        "</div>" +
+        '<div class="data-row data-actions">' +
+        '<button type="button" class="btn secondary block" id="github-save">Save to GitHub</button>' +
+        '<button type="button" class="btn secondary block" id="github-load">Import from GitHub</button>' +
         "</div>" +
         '<hr class="weld" />' +
         '<label class="field">' +
