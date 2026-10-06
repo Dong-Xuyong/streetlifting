@@ -2,6 +2,7 @@
   "use strict";
 
   var COMP = ["pullup", "dip", "muscleup", "squat"];
+  var ACT_ORDER = ["run", "ride", "swim", "walk", "row", "hike"];
   var LABELS = {
     pullup: "Pull-up",
     dip: "Dip",
@@ -630,6 +631,18 @@
     return n;
   }
 
+  function heatCount(session) {
+    var work;
+    var n;
+    if (!session) return 0;
+    work = workingCount(session);
+    if (work > 0) return work;
+    if (!Array.isArray(session.activities) || session.activities.length === 0) return 0;
+    n = activityCount(session);
+    if (n < 1) return 1;
+    return n;
+  }
+
   function heatmap(file, todayISO) {
     var sessions = normalize(file).sessions;
     var monday = mondayOfWeek(weekKey(todayISO));
@@ -645,7 +658,7 @@
         date = start ? addDays(start, w * 7 + d) : "";
         col.push({
           date: date,
-          count: date && sessions[date] ? workingCount(sessions[date]) : 0
+          count: date && sessions[date] ? heatCount(sessions[date]) : 0
         });
       }
       columns.push(col);
@@ -701,6 +714,238 @@
     return out;
   }
 
+  function activityCount(session) {
+    var acts;
+    var n = 0;
+    var i;
+    if (!session || !Array.isArray(session.activities)) return 0;
+    acts = session.activities;
+    for (i = 0; i < acts.length; i++) {
+      if (acts[i] && typeof acts[i] === "object") n += 1;
+    }
+    return n;
+  }
+
+  function repMaxes(file, lift) {
+    var sessions = normalize(file).sessions;
+    var dates = sessionDates(file);
+    var bestKg = [];
+    var bestDate = [];
+    var out = [];
+    var n;
+    var i;
+    var j;
+    var sets;
+    var kg;
+    var reps;
+    for (n = 1; n <= 10; n++) {
+      bestKg[n] = null;
+      bestDate[n] = null;
+    }
+    for (i = 0; i < dates.length; i++) {
+      sets = workingSets(sessions[dates[i]], lift);
+      for (j = 0; j < sets.length; j++) {
+        kg = sets[j].kg;
+        reps = sets[j].reps;
+        for (n = 1; n <= 10; n++) {
+          if (reps < n) break;
+          if (bestKg[n] === null || kg > bestKg[n]) {
+            bestKg[n] = kg;
+            bestDate[n] = dates[i];
+          }
+        }
+      }
+    }
+    for (n = 1; n <= 10; n++) {
+      out.push({ reps: n, kg: bestKg[n], date: bestDate[n] });
+    }
+    return out;
+  }
+
+  function programView(file, lift) {
+    var programs;
+    var prog;
+    var srcDays;
+    var days = [];
+    var i;
+    var src;
+    var doneText;
+    var isDone;
+    var sawNext = false;
+    var status;
+    var doneCount = 0;
+    if (!file || typeof file !== "object") return null;
+    programs = file.programs;
+    if (!programs || typeof programs !== "object") return null;
+    if (!hasKey(programs, lift)) return null;
+    prog = programs[lift];
+    if (!prog || typeof prog !== "object") return null;
+    srcDays = prog.days;
+    if (!Array.isArray(srcDays) || !srcDays.length) return null;
+    for (i = 0; i < srcDays.length; i++) {
+      src = srcDays[i] && typeof srcDays[i] === "object" ? srcDays[i] : {};
+      doneText = typeof src.done === "string" ? src.done : "";
+      isDone = doneText.length > 0;
+      if (isDone) {
+        status = "done";
+        doneCount += 1;
+      } else if (!sawNext) {
+        status = "next";
+        sawNext = true;
+      } else {
+        status = "upcoming";
+      }
+      days.push({
+        label: typeof src.label === "string" ? src.label : "",
+        sets: Array.isArray(src.sets) ? src.sets.slice() : [],
+        done: isDone ? doneText : null,
+        status: status
+      });
+    }
+    return {
+      name: typeof prog.name === "string" ? prog.name : "",
+      note: typeof prog.note === "string" ? prog.note : "",
+      start: typeof prog.start === "string" ? prog.start : "",
+      days: days,
+      doneCount: doneCount,
+      total: srcDays.length
+    };
+  }
+
+  function sessionKcal(session) {
+    var total = null;
+    var k;
+    var acts;
+    var i;
+    var c;
+    if (!session || typeof session !== "object") return null;
+    k = finite(session.liftKcal);
+    if (k !== null) total = k;
+    acts = session.activities;
+    if (!Array.isArray(acts)) return total;
+    for (i = 0; i < acts.length; i++) {
+      if (!acts[i] || typeof acts[i] !== "object") continue;
+      c = finite(acts[i].kcal);
+      if (c === null) continue;
+      total = total === null ? c : total + c;
+    }
+    return total;
+  }
+
+  function bumpPart(bucket, key, value) {
+    if (typeof key !== "string" || !key) return;
+    if (typeof value !== "number" || !isFinite(value)) return;
+    if (!hasKey(bucket, key)) bucket[key] = 0;
+    bucket[key] += value;
+  }
+
+  function weekSpan(todayISO, n) {
+    var end = weekKey(todayISO);
+    var out = [];
+    var count = 12;
+    var i;
+    if (!end) return out;
+    if (typeof n === "number" && isFinite(n)) count = Math.floor(n);
+    if (count < 0) count = 0;
+    for (i = count - 1; i >= 0; i--) out.push(shiftWeekKey(end, -i));
+    return out;
+  }
+
+  function weeklyKcal(file, todayISO, n) {
+    var sessions = normalize(file).sessions;
+    var weeks = weekSpan(todayISO, n);
+    var indexOf = {};
+    var buckets = [];
+    var out = [];
+    var dates;
+    var i;
+    var j;
+    var date;
+    var session;
+    var wk;
+    var idx;
+    var k;
+    var acts;
+    var act;
+    var parts;
+    var keys;
+    var key;
+    var total;
+    for (i = 0; i < weeks.length; i++) {
+      indexOf[weeks[i]] = i;
+      buckets.push({});
+    }
+    dates = sessionDates(file);
+    for (i = 0; i < dates.length; i++) {
+      date = dates[i];
+      wk = weekKey(date);
+      if (!hasKey(indexOf, wk)) continue;
+      idx = indexOf[wk];
+      session = sessions[date];
+      if (!session || typeof session !== "object") continue;
+      k = finite(session.liftKcal);
+      if (k !== null) bumpPart(buckets[idx], "strength", k);
+      acts = session.activities;
+      if (!Array.isArray(acts)) continue;
+      for (j = 0; j < acts.length; j++) {
+        act = acts[j];
+        if (!act || typeof act !== "object") continue;
+        if (typeof act.type !== "string" || !act.type) continue;
+        k = finite(act.kcal);
+        if (k === null) continue;
+        bumpPart(buckets[idx], act.type, k);
+      }
+    }
+    for (i = 0; i < weeks.length; i++) {
+      parts = {};
+      total = 0;
+      keys = Object.keys(buckets[i]);
+      for (j = 0; j < keys.length; j++) {
+        key = keys[j];
+        if (!buckets[i][key]) continue;
+        parts[key] = buckets[i][key];
+        total += buckets[i][key];
+      }
+      out.push({ week: weeks[i], total: total, parts: parts });
+    }
+    return out;
+  }
+
+  function activityTypes(file) {
+    var sessions = normalize(file).sessions;
+    var dates = sessionDates(file);
+    var seen = {};
+    var out = [];
+    var extras = [];
+    var keys;
+    var i;
+    var j;
+    var session;
+    var acts;
+    var type;
+    for (i = 0; i < dates.length; i++) {
+      session = sessions[dates[i]];
+      if (!session || !Array.isArray(session.activities)) continue;
+      acts = session.activities;
+      for (j = 0; j < acts.length; j++) {
+        if (!acts[j] || typeof acts[j] !== "object") continue;
+        type = acts[j].type;
+        if (typeof type !== "string" || !type) continue;
+        seen[type] = true;
+      }
+    }
+    for (i = 0; i < ACT_ORDER.length; i++) {
+      if (seen[ACT_ORDER[i]]) out.push(ACT_ORDER[i]);
+    }
+    keys = Object.keys(seen);
+    for (i = 0; i < keys.length; i++) {
+      if (ACT_ORDER.indexOf(keys[i]) === -1) extras.push(keys[i]);
+    }
+    extras.sort();
+    for (i = 0; i < extras.length; i++) out.push(extras[i]);
+    return out;
+  }
+
   var api = {
     COMP: COMP,
     LABELS: LABELS,
@@ -717,7 +962,12 @@
     heatmap: heatmap,
     weekKey: weekKey,
     currentWeekCoach: currentWeekCoach,
-    liftsIn: liftsIn
+    liftsIn: liftsIn,
+    repMaxes: repMaxes,
+    programView: programView,
+    sessionKcal: sessionKcal,
+    weeklyKcal: weeklyKcal,
+    activityTypes: activityTypes
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -896,6 +1146,197 @@ if (typeof module !== "undefined" && require.main === module) {
   }, "2026-10-06"), 1);
   assert.strictEqual(Street.label("front-lever"), "Front Lever");
   assert.strictEqual(Street.label("pullup"), "Pull-up");
+
+  var rm = Street.repMaxes({
+    sessions: {
+      "2026-10-01": {
+        lifts: {
+          squat: [
+            { kg: 200, reps: 1, warmup: true },
+            { kg: 100, reps: 3 }
+          ]
+        }
+      },
+      "2026-10-08": {
+        lifts: { squat: [{ kg: 90, reps: 8 }] }
+      }
+    }
+  }, "squat");
+  assert.strictEqual(rm.length, 10);
+  assert.strictEqual(rm[0].reps, 1);
+  assert.strictEqual(rm[0].kg, 100);
+  assert.strictEqual(rm[0].date, "2026-10-01");
+  assert.strictEqual(rm[1].kg, 100);
+  assert.strictEqual(rm[2].kg, 100);
+  assert.strictEqual(rm[3].reps, 4);
+  assert.strictEqual(rm[3].kg, 90);
+  assert.strictEqual(rm[3].date, "2026-10-08");
+  assert.strictEqual(rm[4].kg, 90);
+  assert.strictEqual(rm[5].kg, 90);
+  assert.strictEqual(rm[6].kg, 90);
+  assert.strictEqual(rm[7].reps, 8);
+  assert.strictEqual(rm[7].kg, 90);
+  assert.strictEqual(rm[8].reps, 9);
+  assert.strictEqual(rm[8].kg, null);
+  assert.strictEqual(rm[8].date, null);
+  assert.strictEqual(rm[9].reps, 10);
+  assert.strictEqual(rm[9].kg, null);
+  assert.strictEqual(rm[9].date, null);
+
+  var progView = Street.programView({
+    programs: {
+      pullup: {
+        name: "Base",
+        note: "easy",
+        start: "2026-10-01",
+        days: [
+          { label: "A", sets: [{ sets: 3, reps: 10, kg: 27.5 }], done: "2026-10-01" },
+          { label: "B", sets: [{ sets: 3, reps: 8, kg: 30 }] }
+        ]
+      }
+    }
+  }, "pullup");
+  assert.strictEqual(progView.doneCount, 1);
+  assert.strictEqual(progView.total, 2);
+  assert.strictEqual(progView.days[0].status, "done");
+  assert.strictEqual(progView.days[1].status, "next");
+  assert.strictEqual(Street.programView({ programs: {} }, "squat"), null);
+  assert.strictEqual(Street.programView({ programs: { dip: { days: [] } } }, "dip"), null);
+
+  assert.strictEqual(Street.sessionKcal({
+    liftKcal: 100,
+    activities: [{ type: "run", kcal: 50 }]
+  }), 150);
+  assert.strictEqual(Street.sessionKcal({ lifts: { pullup: [{ kg: 20, reps: 5 }] } }), null);
+  assert.strictEqual(Street.sessionKcal({ liftKcal: 0 }), 0);
+
+  var kcalWeeks = Street.weeklyKcal({
+    sessions: {
+      "2026-10-05": {
+        liftKcal: 300,
+        activities: [{ type: "run", min: 30, km: 5, kcal: 250 }]
+      },
+      "2026-09-30": {
+        activities: [{ type: "ride", kcal: 100 }]
+      }
+    }
+  }, "2026-10-06", 12);
+  assert.strictEqual(kcalWeeks.length, 12);
+  assert.strictEqual(kcalWeeks[0].total, 0);
+  assert.strictEqual(kcalWeeks[11].week, "2026-W41");
+  assert.strictEqual(kcalWeeks[11].parts.strength, 300);
+  assert.strictEqual(kcalWeeks[11].parts.run, 250);
+  assert.strictEqual(kcalWeeks[11].total, 550);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(kcalWeeks[11].parts, "ride"), false);
+  assert.strictEqual(kcalWeeks[10].week, "2026-W40");
+  assert.strictEqual(kcalWeeks[10].parts.ride, 100);
+  assert.strictEqual(kcalWeeks[10].total, 100);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(kcalWeeks[10].parts, "strength"), false);
+  assert.strictEqual(Street.weeklyKcal({ sessions: {} }, "2026-10-06").length, 12);
+
+  var cardioHeat = Street.heatmap({
+    sessions: {
+      "2026-10-05": { activities: [{ type: "run", kcal: 10 }] }
+    }
+  }, "2026-10-06");
+  assert.strictEqual(cardioHeat.columns[25][0].date, "2026-10-05");
+  assert.strictEqual(cardioHeat.columns[25][0].count, 1);
+
+  assert.deepStrictEqual(Street.activityTypes({
+    sessions: {
+      "2026-10-05": {
+        activities: [
+          { type: "yoga" },
+          { type: "hike" },
+          { type: "swim" },
+          { type: "run" }
+        ]
+      },
+      "2026-10-06": {
+        activities: [{ type: "ski-erg" }, { type: "ride" }]
+      }
+    }
+  }), ["run", "ride", "swim", "hike", "ski-erg", "yoga"]);
+
+  var band = Street.repMaxes({
+    sessions: {
+      "2026-09-01": {
+        lifts: { pullup: [{ kg: 80, reps: 8 }] }
+      },
+      "2026-10-01": {
+        lifts: {
+          pullup: [
+            { kg: 200, reps: 10, warmup: true },
+            { kg: 100, reps: 5 }
+          ]
+        }
+      }
+    }
+  }, "pullup");
+  assert.strictEqual(band.length, 10);
+  var bi;
+  for (bi = 0; bi < 5; bi++) {
+    assert.strictEqual(band[bi].reps, bi + 1);
+    assert.strictEqual(band[bi].kg, 100);
+    assert.strictEqual(band[bi].date, "2026-10-01");
+  }
+  for (bi = 5; bi < 8; bi++) {
+    assert.strictEqual(band[bi].reps, bi + 1);
+    assert.strictEqual(band[bi].kg, 80);
+    assert.strictEqual(band[bi].date, "2026-09-01");
+  }
+  assert.strictEqual(band[8].reps, 9);
+  assert.strictEqual(band[8].kg, null);
+  assert.strictEqual(band[8].date, null);
+  assert.strictEqual(band[9].reps, 10);
+  assert.strictEqual(band[9].kg, null);
+  assert.strictEqual(band[9].date, null);
+
+  var progPlain = Street.programView({
+    programs: {
+      squat: {
+        days: [
+          { label: "A", sets: [{ kg: 80, reps: 5 }], done: "logged" },
+          { label: "B", sets: [{ kg: 85, reps: 5 }] }
+        ]
+      }
+    }
+  }, "squat");
+  assert.strictEqual(progPlain.days[0].status, "done");
+  assert.strictEqual(progPlain.days[1].status, "next");
+  assert.strictEqual(progPlain.doneCount, 1);
+  assert.strictEqual(progPlain.total, 2);
+  assert.strictEqual(progPlain.name, "");
+  assert.strictEqual(progPlain.note, "");
+  assert.strictEqual(progPlain.start, "");
+  assert.strictEqual(Street.programView({ sessions: {} }, "squat"), null);
+
+  assert.strictEqual(Street.sessionKcal({
+    liftKcal: 100,
+    activities: [{ type: "run", kcal: 50 }]
+  }), 150);
+  assert.strictEqual(Street.sessionKcal({ note: "empty" }), null);
+
+  assert.strictEqual(Street.weeklyKcal({ sessions: {} }, "2026-10-06", 4).length, 4);
+
+  var runOnly = Street.heatmap({
+    sessions: {
+      "2026-10-05": { activities: [{ type: "run", kcal: 10 }] }
+    }
+  }, "2026-10-06");
+  assert.strictEqual(runOnly.columns[25][0].date, "2026-10-05");
+  assert.strictEqual(runOnly.columns[25][0].count, 1);
+
+  var liftAndRun = Street.heatmap({
+    sessions: {
+      "2026-10-06": {
+        lifts: { dip: [{ kg: 20, reps: 5 }, { kg: 22, reps: 3 }] },
+        activities: [{ type: "run", kcal: 10 }]
+      }
+    }
+  }, "2026-10-06");
+  assert.strictEqual(liftAndRun.columns[25][1].date, "2026-10-06");
+  assert.strictEqual(liftAndRun.columns[25][1].count, 2);
 
   console.log("streetlifting core checks passed");
 }
