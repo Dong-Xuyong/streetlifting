@@ -1295,11 +1295,10 @@
           if (token) bits.push(token);
         });
       }
-      if (typeof session.place === "string" && session.place.trim()) bits.push(session.place.trim());
+      kcal = sessionKcal(session);
+      if (typeof kcal === "number" && isFinite(kcal)) bits.push(Math.round(kcal) + " kcal");
       bw = session.bw;
       if (typeof bw === "number" && isFinite(bw)) bits.push(fmtKg(bw) + " kg");
-      kcal = sessionKcal(session);
-      if (typeof kcal === "number" && isFinite(kcal)) bits.push(fmtKg(kcal) + " kcal");
       toggle = button("session-toggle", "");
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       if (/^\d{4}-\d{2}-\d{2}$/.test(date)) toggle.id = "sess-" + date;
