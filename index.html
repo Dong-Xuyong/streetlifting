@@ -1,89 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="color-scheme" content="light dark" />
-  <!-- Pre-JS splash matches :root cream; theme.js swaps to #141414 in dark -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f4ef" />
-  <meta name="description" content="Weighted calisthenics tracker — programs, session log, rest timer, and plate loads. Chalk on steel." />
-  <meta name="application-name" content="Streetlifting" />
-  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="Read-only streetlifting progress. Grok writes the log." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Streetlifting" />
   <meta name="format-detection" content="telephone=no" />
   <title>Streetlifting</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="dong-ui/theme.css?v=10" />
-  <link rel="stylesheet" href="styles.css?v=10" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231565c0'/><path stroke='white' stroke-width='8' stroke-linecap='round' d='M18 50h64M30 36v28M70 36v28'/></svg>" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="dong-ui/theme.css?v=1" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <script src="dong-ui/theme.js"></script>
   <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
-  <a class="skip-link" href="#view-root">Skip to content</a>
-
-  <div id="app">
-    <header id="topbar" aria-labelledby="topbar-title">
-      <button
-        id="back-btn"
-        class="icon-btn hidden"
-        type="button"
-        aria-label="Back to home"
-      >&#8592;</button>
-      <div id="topbar-brand">
-        <p id="app-wordmark">Streetlifting</p>
-        <h1 id="topbar-title">Streetlifting</h1>
-      </div>
-      <span id="topbar-meta" aria-live="polite"></span>
-      <a class="dong-home-link" href="https://dong-xuyong.github.io/" aria-label="Back to all apps" title="All apps"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></a>
-      <button type="button" data-dong-theme-toggle aria-label="Toggle color theme"></button>
-    </header>
-
-    <main id="view-root" tabindex="-1" aria-labelledby="topbar-title"></main>
-
-    <nav id="tabbar" aria-label="Primary">
-      <button type="button" data-tab="home" class="tab nav-tab active" aria-label="Home" aria-controls="view-root">
-        <span class="tab-icon nav-icon" aria-hidden="true">&#8962;</span><span class="tab-label">Home</span>
-      </button>
-      <button type="button" data-tab="history" class="tab nav-tab" aria-label="History" aria-controls="view-root">
-        <span class="tab-icon nav-icon" aria-hidden="true">&#9776;</span><span class="tab-label">Hist</span>
-      </button>
-      <button type="button" data-tab="analytics" class="tab nav-tab" aria-label="Analytics" aria-controls="view-root">
-        <span class="tab-icon nav-icon" aria-hidden="true">&#9636;</span><span class="tab-label">Stats</span>
-      </button>
-      <button type="button" data-tab="program" class="tab nav-tab" aria-label="Program" aria-controls="view-root">
-        <span class="tab-icon nav-icon" aria-hidden="true">&#9635;</span><span class="tab-label">Prog</span>
-      </button>
-      <button type="button" data-tab="exercises" class="tab nav-tab" aria-label="Exercises" aria-controls="view-root">
-        <span class="tab-icon nav-icon" aria-hidden="true">&#9733;</span><span class="tab-label">Ex</span>
-      </button>
-      <button type="button" data-tab="settings" class="tab nav-tab" aria-label="Settings" aria-controls="view-root">
-        <span class="tab-icon nav-icon" aria-hidden="true">&#9881;</span><span class="tab-label">Set</span>
-      </button>
-    </nav>
-  </div>
-
-  <noscript>
-    <p style="margin:24px 16px;color:#141414;font:500 1rem/1.4 'Encode Sans',system-ui,sans-serif;max-width:640px">
-      Streetlifting needs JavaScript to run. Enable it, then reload.
-    </p>
-  </noscript>
-
-  <script src="dong-ui/gh-sync.js?v=2"></script>
-  <script src="js/store.js?v=11"></script>
-  <script src="js/prs.js?v=10"></script>
-  <script src="js/csv.js?v=10"></script>
-  <script src="js/timer.js?v=11"></script>
-  <script src="js/views-home.js?v=10"></script>
-  <script src="js/views-exercises.js?v=10"></script>
-  <script src="js/views-program.js?v=10"></script>
-  <script src="js/views-log.js?v=10"></script>
-  <script src="js/views-summary.js?v=10"></script>
-  <script src="js/views-analytics.js?v=10"></script>
-  <script src="js/views-settings.js?v=12"></script>
-  <script src="app.js?v=10"></script>
+  <header>
+    <h1>Streetlifting</h1>
+    <span id="sync-label" aria-live="polite"></span>
+    <button type="button" data-dong-theme-toggle aria-label="Toggle color theme"></button>
+  </header>
+  <section id="hero" class="hero" aria-label="Summary"></section>
+  <main id="main"></main>
+  <footer id="connect" hidden>
+    <button type="button" id="btn-connect">Connect GitHub to sync</button>
+  </footer>
+  <script src="dong-ui/gh-sync.js?v=1"></script>
+  <script src="core.js?v=1"></script>
+  <script src="app.js?v=1"></script>
 </body>
 </html>
