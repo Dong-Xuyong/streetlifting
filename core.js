@@ -9,6 +9,9 @@
     muscleup: "Muscle-up",
     squat: "Squat"
   };
+  var DEFAULT_PR_RESETS = {
+    squat: { from: "2026-10-10", kg: 120, reps: 1, note: "Full depth" }
+  };
   var MS_DAY = 86400000;
 
   function pad2(n) {
@@ -123,12 +126,88 @@
     var sessions = {};
     var goals = [];
     var weeks = {};
+    var out;
+    var keys;
+    var i;
+    var key;
     if (file && typeof file === "object") {
       if (file.sessions && typeof file.sessions === "object") sessions = file.sessions;
       if (Array.isArray(file.goals)) goals = file.goals;
       if (file.weeks && typeof file.weeks === "object") weeks = file.weeks;
     }
-    return { sessions: sessions, goals: goals, weeks: weeks };
+    out = { sessions: sessions, goals: goals, weeks: weeks };
+    if (!file || typeof file !== "object") return out;
+    keys = Object.keys(file);
+    for (i = 0; i < keys.length; i++) {
+      key = keys[i];
+      if (key === "sessions" || key === "goals" || key === "weeks") continue;
+      out[key] = file[key];
+    }
+    return out;
+  }
+
+  function parseReset(raw) {
+    var from;
+    var kg;
+    var reps;
+    var note;
+    if (!raw || typeof raw !== "object") return null;
+    from = typeof raw.from === "string" && parseDay(raw.from) ? raw.from : "";
+    kg = finite(raw.kg);
+    reps = finite(raw.reps);
+    if (!from || kg === null || reps === null) return null;
+    note = typeof raw.note === "string" ? raw.note : "";
+    return { from: from, kg: kg, reps: reps, note: note };
+  }
+
+  function prReset(file, lift) {
+    var raw;
+    var parsed;
+    if (file && file.prResets && typeof file.prResets === "object" && hasKey(file.prResets, lift)) {
+      raw = file.prResets[lift];
+      if (raw == null || raw === false) return null;
+      parsed = parseReset(raw);
+      if (parsed) return parsed;
+    }
+    if (!hasKey(DEFAULT_PR_RESETS, lift)) return null;
+    return parseReset(DEFAULT_PR_RESETS[lift]);
+  }
+
+  function baselineParsed(reset) {
+    if (!reset) return null;
+    return {
+      kg: reset.kg,
+      reps: reset.reps,
+      e1rm: e1rm(reset.kg, reset.reps),
+      note: reset.note || ""
+    };
+  }
+
+  function countsForPr(file, lift, date) {
+    var reset = prReset(file, lift);
+    if (!reset) return true;
+    return typeof date === "string" && date >= reset.from;
+  }
+
+  function eachCounted(file, lift, fn) {
+    var sessions = normalize(file).sessions;
+    var dates = sessionDates(file);
+    var reset = prReset(file, lift);
+    var base = baselineParsed(reset);
+    var placed = !base;
+    var i;
+    var j;
+    var sets;
+    for (i = 0; i < dates.length; i++) {
+      if (base && !placed && dates[i] >= reset.from) {
+        placed = true;
+        fn(reset.from, base);
+      }
+      if (reset && dates[i] < reset.from) continue;
+      sets = workingSets(sessions[dates[i]], lift);
+      for (j = 0; j < sets.length; j++) fn(dates[i], sets[j]);
+    }
+    if (base && !placed) fn(reset.from, base);
   }
 
   function sessionDates(file) {
@@ -179,6 +258,7 @@
   function series(file, lift, range, todayISO) {
     var sessions = normalize(file).sessions;
     var dates = sessionDates(file);
+    var reset = prReset(file, lift);
     var maxPrev = null;
     var all = [];
     var i;
@@ -200,7 +280,8 @@
         e1rm: best.e1rm,
         kg: best.kg,
         reps: best.reps,
-        pr: isPr
+        pr: isPr,
+        partial: !!(reset && dates[i] < reset.from)
       });
     }
     var out = [];
@@ -217,9 +298,11 @@
     var maxKg = {};
     var maxReps = {};
     var groups = [];
+    var applied = {};
     var di;
     var li;
     var j;
+    var ni;
     var date;
     var session;
     var lifts;
@@ -227,56 +310,91 @@
     var arr;
     var parsed;
     var group;
+    var row;
+    var names;
+    var reset;
+    var base;
+
+    function score(when, slug, set) {
+      group = [];
+      if (!hasKey(maxE, slug) || set.e1rm > maxE[slug]) {
+        maxE[slug] = set.e1rm;
+        group.push({
+          date: when,
+          lift: slug,
+          kind: "e1rm",
+          value: set.e1rm,
+          kg: set.kg,
+          reps: set.reps
+        });
+      }
+      if (!hasKey(maxKg, slug) || set.kg > maxKg[slug]) {
+        maxKg[slug] = set.kg;
+        row = {
+          date: when,
+          lift: slug,
+          kind: "weight",
+          value: set.kg,
+          kg: set.kg,
+          reps: set.reps
+        };
+        if (set.note) row.note = set.note;
+        group.push(row);
+      }
+      if (!hasKey(maxReps, slug) || set.reps > maxReps[slug]) {
+        maxReps[slug] = set.reps;
+        group.push({
+          date: when,
+          lift: slug,
+          kind: "reps",
+          value: set.reps,
+          kg: set.kg,
+          reps: set.reps
+        });
+      }
+      if (group.length) groups.push(group);
+    }
+
+    function placeBaseline(slug, when) {
+      if (applied[slug]) return;
+      reset = prReset(file, slug);
+      if (!reset) {
+        applied[slug] = true;
+        return;
+      }
+      if (when != null && when < reset.from) return;
+      applied[slug] = true;
+      base = baselineParsed(reset);
+      score(reset.from, slug, base);
+    }
+
+    names = ["squat"];
+    if (file && file.prResets && typeof file.prResets === "object") {
+      lifts = Object.keys(file.prResets);
+      for (ni = 0; ni < lifts.length; ni++) {
+        if (names.indexOf(lifts[ni]) === -1) names.push(lifts[ni]);
+      }
+    }
     for (di = 0; di < dates.length; di++) {
       date = dates[di];
+      for (ni = 0; ni < names.length; ni++) placeBaseline(names[ni], date);
       session = sessions[date];
       if (!session || !session.lifts || typeof session.lifts !== "object") continue;
       lifts = Object.keys(session.lifts);
       for (li = 0; li < lifts.length; li++) {
         lift = lifts[li];
+        placeBaseline(lift, date);
+        if (!countsForPr(file, lift, date)) continue;
         arr = session.lifts[lift];
         if (!Array.isArray(arr)) continue;
         for (j = 0; j < arr.length; j++) {
           parsed = readWorking(arr[j]);
           if (!parsed) continue;
-          group = [];
-          if (!hasKey(maxE, lift) || parsed.e1rm > maxE[lift]) {
-            maxE[lift] = parsed.e1rm;
-            group.push({
-              date: date,
-              lift: lift,
-              kind: "e1rm",
-              value: parsed.e1rm,
-              kg: parsed.kg,
-              reps: parsed.reps
-            });
-          }
-          if (!hasKey(maxKg, lift) || parsed.kg > maxKg[lift]) {
-            maxKg[lift] = parsed.kg;
-            group.push({
-              date: date,
-              lift: lift,
-              kind: "weight",
-              value: parsed.kg,
-              kg: parsed.kg,
-              reps: parsed.reps
-            });
-          }
-          if (!hasKey(maxReps, lift) || parsed.reps > maxReps[lift]) {
-            maxReps[lift] = parsed.reps;
-            group.push({
-              date: date,
-              lift: lift,
-              kind: "reps",
-              value: parsed.reps,
-              kg: parsed.kg,
-              reps: parsed.reps
-            });
-          }
-          if (group.length) groups.push(group);
+          score(date, lift, parsed);
         }
       }
     }
+    for (ni = 0; ni < names.length; ni++) placeBaseline(names[ni], null);
     var out = [];
     var gi;
     var si;
@@ -462,23 +580,23 @@
   }
 
   function bestCurrent(file, lift, mode) {
-    var sessions = normalize(file).sessions;
-    var dates = sessionDates(file);
     var best = null;
-    var i;
-    var j;
-    var sets;
-    var v;
-    for (i = 0; i < dates.length; i++) {
-      sets = workingSets(sessions[dates[i]], lift);
-      for (j = 0; j < sets.length; j++) {
-        if (mode.oneRm) v = sets[j].e1rm;
-        else if (sets[j].reps >= mode.reps) v = sets[j].kg;
-        else continue;
-        if (best === null || v > best) best = v;
-      }
-    }
+    eachCounted(file, lift, function (date, parsed) {
+      var v;
+      if (mode.oneRm) v = parsed.e1rm;
+      else if (parsed.reps >= mode.reps) v = parsed.kg;
+      else return;
+      if (best === null || v > best) best = v;
+    });
     return best === null ? 0 : best;
+  }
+
+  function bestE1rm(file, lift) {
+    var best = null;
+    eachCounted(file, lift, function (date, parsed) {
+      if (best === null || parsed.e1rm > best) best = parsed.e1rm;
+    });
+    return best;
   }
 
   function weekWindow(todayISO) {
@@ -504,6 +622,7 @@
     for (i = 0; i < weeks.length; i++) indexOf[weeks[i]] = i;
     dates = sessionDates(file);
     for (i = 0; i < dates.length; i++) {
+      if (!countsForPr(file, lift, dates[i])) continue;
       wk = weekKey(dates[i]);
       if (!hasKey(indexOf, wk)) continue;
       sets = workingSets(sessions[dates[i]], lift);
@@ -727,37 +846,32 @@
   }
 
   function repMaxes(file, lift) {
-    var sessions = normalize(file).sessions;
-    var dates = sessionDates(file);
     var bestKg = [];
     var bestDate = [];
+    var bestNote = [];
     var out = [];
     var n;
-    var i;
-    var j;
-    var sets;
-    var kg;
-    var reps;
     for (n = 1; n <= 10; n++) {
       bestKg[n] = null;
       bestDate[n] = null;
+      bestNote[n] = "";
     }
-    for (i = 0; i < dates.length; i++) {
-      sets = workingSets(sessions[dates[i]], lift);
-      for (j = 0; j < sets.length; j++) {
-        kg = sets[j].kg;
-        reps = sets[j].reps;
-        for (n = 1; n <= 10; n++) {
-          if (reps < n) break;
-          if (bestKg[n] === null || kg > bestKg[n]) {
-            bestKg[n] = kg;
-            bestDate[n] = dates[i];
-          }
+    eachCounted(file, lift, function (date, parsed) {
+      var kg = parsed.kg;
+      var reps = parsed.reps;
+      var note = parsed.note || "";
+      var slot;
+      for (slot = 1; slot <= 10; slot++) {
+        if (reps < slot) break;
+        if (bestKg[slot] === null || kg > bestKg[slot]) {
+          bestKg[slot] = kg;
+          bestDate[slot] = date;
+          bestNote[slot] = note;
         }
       }
-    }
+    });
     for (n = 1; n <= 10; n++) {
-      out.push({ reps: n, kg: bestKg[n], date: bestDate[n] });
+      out.push({ reps: n, kg: bestKg[n], date: bestDate[n], note: bestNote[n] });
     }
     return out;
   }
@@ -951,6 +1065,9 @@
     LABELS: LABELS,
     label: label,
     e1rm: e1rm,
+    normalize: normalize,
+    prReset: prReset,
+    bestE1rm: bestE1rm,
     series: series,
     prs: prs,
     latestDayPrs: latestDayPrs,
@@ -1028,7 +1145,14 @@ if (typeof module !== "undefined" && require.main === module) {
       }
     }
   };
-  assert.strictEqual(Street.prs(warm).length, 0);
+  var warmPrs = Street.prs(warm);
+  var warmI;
+  assert.strictEqual(warmPrs.length, 3);
+  for (warmI = 0; warmI < warmPrs.length; warmI++) {
+    assert.strictEqual(warmPrs[warmI].lift, "squat");
+    assert.strictEqual(warmPrs[warmI].kg, 120);
+    assert.strictEqual(warmPrs[warmI].date, "2026-10-10");
+  }
   var heat = Street.heatmap(warm, "2026-10-06");
   assert.strictEqual(heat.columns.length, 26);
   assert.strictEqual(heat.columns[0].length, 7);
@@ -1148,6 +1272,7 @@ if (typeof module !== "undefined" && require.main === module) {
   assert.strictEqual(Street.label("pullup"), "Pull-up");
 
   var rm = Street.repMaxes({
+    prResets: { squat: null },
     sessions: {
       "2026-10-01": {
         lifts: {
@@ -1337,6 +1462,120 @@ if (typeof module !== "undefined" && require.main === module) {
   }, "2026-10-06");
   assert.strictEqual(liftAndRun.columns[25][1].date, "2026-10-06");
   assert.strictEqual(liftAndRun.columns[25][1].count, 2);
+
+  assert.deepStrictEqual(Street.prReset({ sessions: {} }, "squat"), {
+    from: "2026-10-10",
+    kg: 120,
+    reps: 1,
+    note: "Full depth"
+  });
+  assert.strictEqual(Street.prReset({ sessions: {} }, "pullup"), null);
+  assert.strictEqual(Street.prReset({ prResets: { squat: null } }, "squat"), null);
+
+  var partialSquat = {
+    app: "streetlifting",
+    extra: { keep: true },
+    sessions: {
+      "2026-09-14": { lifts: { squat: [{ kg: 140, reps: 1 }] } },
+      "2026-09-19": { lifts: { squat: [{ kg: 113, reps: 5 }], pullup: [{ kg: 52.5, reps: 3 }] } }
+    }
+  };
+  var squatRm = Street.repMaxes(partialSquat, "squat");
+  assert.strictEqual(squatRm[0].kg, 120);
+  assert.strictEqual(squatRm[0].reps, 1);
+  assert.strictEqual(squatRm[0].date, "2026-10-10");
+  assert.strictEqual(squatRm[0].note, "Full depth");
+  assert.strictEqual(squatRm[4].kg, null);
+  assert.strictEqual(squatRm[4].date, null);
+  assert.strictEqual(Street.bestE1rm(partialSquat, "squat"), 120);
+  assert.strictEqual(Street.repMaxes(partialSquat, "pullup")[0].kg, 52.5);
+  assert.strictEqual(Street.repMaxes(partialSquat, "pullup")[0].date, "2026-09-19");
+  assert.strictEqual(Street.bestE1rm(partialSquat, "pullup"), Street.e1rm(52.5, 3));
+
+  var squatPrs = Street.prs(partialSquat).filter(function (item) { return item.lift === "squat"; });
+  var squatWeight = squatPrs.filter(function (item) { return item.kind === "weight"; });
+  assert.strictEqual(squatWeight.length, 1);
+  assert.strictEqual(squatWeight[0].kg, 120);
+  assert.strictEqual(squatWeight[0].date, "2026-10-10");
+  assert.strictEqual(squatWeight[0].note, "Full depth");
+  assert.strictEqual(partialSquat.sessions["2026-09-14"].lifts.squat[0].kg, 140);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(partialSquat, "prResets"), false);
+  assert.strictEqual(partialSquat.extra.keep, true);
+  assert.strictEqual(partialSquat.app, "streetlifting");
+
+  var squatSeries = Street.series(partialSquat, "squat", "all", "2026-10-12");
+  assert.strictEqual(squatSeries.length, 2);
+  assert.strictEqual(squatSeries[0].date, "2026-09-14");
+  assert.strictEqual(squatSeries[0].kg, 140);
+  assert.strictEqual(squatSeries[0].reps, 1);
+  assert.strictEqual(squatSeries[0].partial, true);
+  assert.strictEqual(squatSeries[1].partial, true);
+  assert.strictEqual(squatSeries[1].kg, 113);
+
+  var kept = Street.normalize({
+    app: "streetlifting",
+    version: 3,
+    sessions: { "2026-10-11": { lifts: { squat: [{ kg: 125, reps: 1 }] } } },
+    goals: [],
+    weeks: {},
+    programs: { squat: { name: "keep" } },
+    prResets: { squat: { from: "2026-10-10", kg: 110, reps: 1, note: "Pause" } },
+    mystery: { ok: true }
+  });
+  assert.strictEqual(kept.app, "streetlifting");
+  assert.strictEqual(kept.version, 3);
+  assert.strictEqual(kept.programs.squat.name, "keep");
+  assert.strictEqual(kept.prResets.squat.kg, 110);
+  assert.strictEqual(kept.mystery.ok, true);
+  assert.strictEqual(Street.repMaxes(kept, "squat")[0].kg, 125);
+  assert.strictEqual(Street.repMaxes(kept, "squat")[0].date, "2026-10-11");
+  assert.strictEqual(Street.repMaxes(kept, "squat")[0].note, "");
+  assert.strictEqual(Street.prReset(kept, "squat").note, "Pause");
+
+  var laterVolume = {
+    sessions: {
+      "2026-09-14": { lifts: { squat: [{ kg: 140, reps: 1 }] } },
+      "2026-10-12": { lifts: { squat: [{ kg: 100, reps: 5 }] } }
+    }
+  };
+  assert.strictEqual(Street.repMaxes(laterVolume, "squat")[0].kg, 120);
+  assert.strictEqual(Street.repMaxes(laterVolume, "squat")[0].date, "2026-10-10");
+  assert.strictEqual(Street.repMaxes(laterVolume, "squat")[4].kg, 100);
+  assert.strictEqual(Street.repMaxes(laterVolume, "squat")[4].date, "2026-10-12");
+  assert.ok(Math.abs(Street.bestE1rm(laterVolume, "squat") - 120) < 1e-9);
+
+  var heavier = {
+    sessions: { "2026-10-11": { lifts: { squat: [{ kg: 110, reps: 5 }] } } }
+  };
+  assert.ok(Math.abs(Street.bestE1rm(heavier, "squat") - Street.e1rm(110, 5)) < 1e-9);
+  assert.strictEqual(Street.repMaxes(heavier, "squat")[0].kg, 120);
+  assert.strictEqual(Street.repMaxes(heavier, "squat")[0].date, "2026-10-10");
+  assert.strictEqual(Street.repMaxes(heavier, "squat")[4].kg, 110);
+  assert.strictEqual(Street.repMaxes(heavier, "squat")[4].date, "2026-10-11");
+
+  var squatGoal = Street.goalCards({
+    goals: [{ id: "gs", lift: "squat", target: 150, reps: 1 }],
+    sessions: { "2026-09-14": { lifts: { squat: [{ kg: 140, reps: 1 }] } } }
+  }, "2026-10-12");
+  assert.strictEqual(squatGoal[0].current, 120);
+  assert.strictEqual(squatGoal[0].hit, false);
+
+  var cleared = Street.repMaxes({
+    prResets: { squat: null },
+    sessions: { "2026-09-14": { lifts: { squat: [{ kg: 140, reps: 1 }] } } }
+  }, "squat");
+  assert.strictEqual(cleared[0].kg, 140);
+  assert.strictEqual(cleared[0].date, "2026-09-14");
+
+  var ordered = Street.prs({
+    sessions: {
+      "2026-09-14": { lifts: { squat: [{ kg: 140, reps: 1 }] } },
+      "2026-10-11": { lifts: { pullup: [{ kg: 40, reps: 1 }] } }
+    }
+  });
+  assert.strictEqual(ordered[0].date, "2026-10-11");
+  assert.strictEqual(ordered[0].lift, "pullup");
+  assert.strictEqual(ordered[0].kind, "e1rm");
 
   console.log("streetlifting core checks passed");
 }

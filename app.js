@@ -201,6 +201,21 @@
     return out;
   }
 
+  function liftReset(slug) {
+    if (!Street.prReset) return null;
+    try {
+      return Street.prReset(file, slug);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function isPartial(slug, date) {
+    var reset = liftReset(slug);
+    if (!reset || !reset.from || !date) return false;
+    return String(date) < String(reset.from);
+  }
+
   function topWorking(sets) {
     var best = null;
     var bestScore = -1;
@@ -344,7 +359,7 @@
       dot.setAttribute("r", sorted[i].pr ? "4" : "3.5");
       dot.setAttribute("fill", "currentColor");
       title = svgEl("title");
-      title.textContent = String(sorted[i].date || "") + " " + (format ? format(sorted[i].y) : String(sorted[i].y));
+      title.textContent = String(sorted[i].date || "") + " " + (format ? format(sorted[i].y) : String(sorted[i].y)) + (sorted[i].partial ? " partial" : "");
       dot.appendChild(title);
       board.appendChild(dot);
     }
@@ -522,6 +537,7 @@
       if (row.date) {
         cell.appendChild(node("span", "rm-date", shortDate(row.date, String(row.date).slice(0, 4) !== String(today).slice(0, 4))));
       }
+      if (row.note) cell.appendChild(node("span", "rm-date", String(row.note)));
       grid.appendChild(cell);
     }
     wrap.appendChild(grid);
@@ -987,7 +1003,7 @@
     var points = [];
     asArray(Street.series(file, lift, range, today)).forEach(function (row) {
       if (!row || typeof row.e1rm !== "number" || !isFinite(row.e1rm)) return;
-      points.push({ date: row.date, y: row.e1rm, pr: !!row.pr });
+      points.push({ date: row.date, y: row.e1rm, pr: !!row.pr, partial: !!row.partial });
     });
     return points;
   }
@@ -1017,6 +1033,11 @@
       if (drawn) {
         section.appendChild(drawn.wrap);
         section.appendChild(axisLine(drawn, fmtE1));
+      }
+      if (points.some(function (point) { return point && point.partial; })) {
+        var reset = liftReset(lift);
+        var when = reset && reset.from ? shortDate(reset.from, true) : "";
+        section.appendChild(node("p", "empty-line", "Before " + when + " is partial depth."));
       }
     }
     if (typeof Street.repMaxes === "function") section.appendChild(repBlock(lift, today));
@@ -1049,13 +1070,23 @@
       var best = null;
       var hist = asArray(Street.series(file, slug, "all", today));
       tile.appendChild(node("span", "tile-name", label(slug)));
-      if (last && !missing[slug] && parts[slug] != null && parts[slug] !== "" && isFinite(Number(parts[slug]))) {
-        best = Number(parts[slug]);
+      if (typeof Street.bestE1rm === "function") {
+        try {
+          best = Street.bestE1rm(file, slug);
+        } catch (err) {
+          best = null;
+        }
+        if (typeof best !== "number" || !isFinite(best)) best = null;
       }
-      hist.forEach(function (row) {
-        if (!row || typeof row.e1rm !== "number" || !isFinite(row.e1rm)) return;
-        if (best === null || row.e1rm > best) best = row.e1rm;
-      });
+      if (best === null) {
+        if (last && !missing[slug] && parts[slug] != null && parts[slug] !== "" && isFinite(Number(parts[slug]))) {
+          best = Number(parts[slug]);
+        }
+        hist.forEach(function (row) {
+          if (!row || typeof row.e1rm !== "number" || !isFinite(row.e1rm)) return;
+          if (best === null || row.e1rm > best) best = row.e1rm;
+        });
+      }
       if (best !== null) value = fmtKg(best);
       tile.appendChild(node("span", "tile-val", value));
       tiles.appendChild(tile);
@@ -1092,7 +1123,19 @@
     relGrid = node("div", "rels");
     comps().forEach(function (slug) {
       var rel = latestRel.rel && typeof latestRel.rel === "object" ? latestRel.rel[slug] : null;
+      var est = null;
+      var bw = latestRel.bw;
       var cell = node("div", "rel");
+      if (typeof Street.bestE1rm === "function") {
+        try {
+          est = Street.bestE1rm(file, slug);
+        } catch (err) {
+          est = null;
+        }
+      }
+      if (typeof est === "number" && isFinite(est) && typeof bw === "number" && isFinite(bw) && bw !== 0) {
+        rel = (bw + est) / bw;
+      }
       cell.appendChild(node("span", "rel-name", label(slug)));
       cell.appendChild(node("span", "rel-val", fmtRel(rel)));
       relGrid.appendChild(cell);
@@ -1192,6 +1235,7 @@
       row.appendChild(node("span", "pr-lift", label(item.lift)));
       row.appendChild(node("span", "pr-kind", kindName(item.kind)));
       row.appendChild(node("span", "pr-val", prValueText(item)));
+      if (item.note) row.appendChild(node("span", "tag", String(item.note)));
       section.appendChild(row);
     });
     els.main.appendChild(section);
@@ -1283,6 +1327,7 @@
             top = topWorking(lifts[one]);
             if (top) piece += " " + fmtKg(top.kg) + " x " + fmtReps(top.reps);
           }
+          if (isPartial(one, date) && piece !== label(one)) piece += " partial";
           bits.push(piece);
         });
       }
@@ -1325,7 +1370,11 @@
             var sets;
             if (kind === "lift" && one !== slug) return;
             sets = Array.isArray(lifts[one]) ? lifts[one] : [];
-            detail.appendChild(node("h4", "lift-name", label(one)));
+            (function () {
+              var head = node("h4", "lift-name", label(one));
+              if (isPartial(one, date)) head.appendChild(node("span", "tag", "partial"));
+              detail.appendChild(head);
+            })();
             if (!sets.length) {
               detail.appendChild(node("p", "set-line", "No sets yet."));
               return;
