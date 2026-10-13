@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Streetlifting",
-  "short_name": "Streetlift",
+  "name": "Streetlifting Log",
+  "short_name": "Streetlifting Log",
   "description": "Read-only streetlifting progress. Grok writes the log.",
   "lang": "en",
   "dir": "ltr",
